@@ -224,18 +224,20 @@ mkdir -p deploy/deps/checkpoints
 ```bash
 hf download jdopensource/JoyAI-Video-Edit \
   --repo-type model \
-  --local-dir deploy/deps/checkpoints/StreamEdit \
+  --local-dir deploy/deps/checkpoints/editor \
   --include "dit/joyai_video_edit_dit_0811.pth" "vae/*"
 
-# the checkpoint keeps its published filename; the server expects the
-# renamed one (deploy/run_server.sh:48)
-mv deploy/deps/checkpoints/StreamEdit/dit/joyai_video_edit_dit_0811.pth \
-   deploy/deps/checkpoints/StreamEdit/dit/streamedit_dit_0811.pth
+# Move the published checkpoint to the runtime's default path.
+# Only the local filename changes; the checkpoint contents stay unchanged.
+mv deploy/deps/checkpoints/editor/dit/joyai_video_edit_dit_0811.pth \
+   deploy/deps/checkpoints/editor/model.pth
 ```
 
 > `--include` skips the older `dit/joyai_video_edit_dit_0804.pth` (~32.5 GB),
-> which the server does not use. If you ship `0804` by mistake it is a silent
-> no-op — the launcher hardcodes the `0811` filename.
+> which the server does not use. Use the `0811` checkpoint and move it to
+> `editor/model.pth` as shown above; do not substitute the older weights.
+> The empty `editor/dit/` directory and download metadata may remain;
+> neither changes the runtime model paths.
 >
 > If Hugging Face is unreachable, prefix the command with
 > `HF_ENDPOINT=https://hf-mirror.com` (see §2/§3b).
@@ -244,25 +246,28 @@ A partial transfer is the most common cause of a server that starts and then
 fails at first inference — verify before launching:
 
 ```bash
+# Run in a subshell so subsequent commands still start from the repo root.
+(
 cd deploy/deps/checkpoints
-find StreamEdit -type f -printf '%10s  %p\n' | sort -k2
-# expect exactly 3 files: dit/streamedit_dit_0811.pth, vae/config.json,
-#                         vae/diffusion_pytorch_model.safetensors
+find editor -type f -not -path '*/.cache/*' -printf '%10s  %p\n' | sort -k2
+# Required files: model.pth, vae/config.json,
+#                 vae/diffusion_pytorch_model.safetensors
 python - <<'PY'
 import json, torch
-p = "StreamEdit/dit/streamedit_dit_0811.pth"
+p = "editor/model.pth"
 sd = torch.load(p, map_location="cpu", weights_only=True, mmap=True)
 print("DiT tensors:", len(sd))
-print("VAE config :", json.load(open("StreamEdit/vae/config.json"))["_class_name"])
+print("VAE config :", json.load(open("editor/vae/config.json"))["_class_name"])
 PY
+)
 ```
 
 This should produce:
 
 ```
-deploy/deps/checkpoints/StreamEdit/dit/streamedit_dit_0811.pth
-deploy/deps/checkpoints/StreamEdit/vae/config.json
-deploy/deps/checkpoints/StreamEdit/vae/diffusion_pytorch_model.safetensors
+deploy/deps/checkpoints/editor/model.pth
+deploy/deps/checkpoints/editor/vae/config.json
+deploy/deps/checkpoints/editor/vae/diffusion_pytorch_model.safetensors
 ```
 
 **3b. Text/vision encoder** — MiMo-VL:
@@ -270,7 +275,7 @@ deploy/deps/checkpoints/StreamEdit/vae/diffusion_pytorch_model.safetensors
 ```bash
 hf download XiaomiMiMo/MiMo-VL-7B-RL-2508 \
   --repo-type model \
-  --local-dir deploy/deps/checkpoints/MiMo-VL-7B-RL-2508
+  --local-dir deploy/deps/checkpoints/text_encoder
 ```
 
 > **If Hugging Face is unreachable** (verified blocked from some networks —
@@ -279,7 +284,7 @@ hf download XiaomiMiMo/MiMo-VL-7B-RL-2508 \
 > ```bash
 > HF_ENDPOINT=https://hf-mirror.com hf download XiaomiMiMo/MiMo-VL-7B-RL-2508 \
 >   --repo-type model \
->   --local-dir deploy/deps/checkpoints/MiMo-VL-7B-RL-2508
+>   --local-dir deploy/deps/checkpoints/text_encoder
 > ```
 >
 > Alternatively transfer the directory out of band like §3a. It is ~16 GB.
@@ -338,10 +343,10 @@ Final tree:
 
 ```
 deploy/deps/checkpoints/
-├── StreamEdit/
-│   ├── dit/streamedit_dit_0811.pth
+├── editor/
+│   ├── model.pth
 │   └── vae/{config.json, diffusion_pytorch_model.safetensors}
-├── MiMo-VL-7B-RL-2508/
+├── text_encoder/
 ├── face_detection_yunet_2023mar.onnx
 └── yolov8n.onnx
 ```

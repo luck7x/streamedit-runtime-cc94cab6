@@ -6,8 +6,9 @@ from typing import Any
 
 # Default checkpoint locations (users clone weights into deps/checkpoints).
 _CKPT_ROOT = Path(__file__).resolve().parents[1] / "deps" / "checkpoints"
-_DEFAULT_VAE_PATH = _CKPT_ROOT / "StreamEdit" / "vae"
-_DEFAULT_TEXT_ENCODER_PATH = _CKPT_ROOT / "MiMo-VL-7B-RL-2508"
+_DEFAULT_DIT_PATH = _CKPT_ROOT / "editor" / "model.pth"
+_DEFAULT_VAE_PATH = _CKPT_ROOT / "editor" / "vae"
+_DEFAULT_TEXT_ENCODER_PATH = _CKPT_ROOT / "text_encoder"
 
 
 @dataclass
@@ -15,7 +16,7 @@ class ExpConfig:
 
     seed: int = 42
 
-    dit_ckpt: str | None = None
+    dit_ckpt: str | None = str(_DEFAULT_DIT_PATH)
     dit_arch_config: dict[str, Any] = field(
         default_factory=lambda: {
             "params": {

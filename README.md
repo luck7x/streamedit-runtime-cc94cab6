@@ -24,3 +24,20 @@ actual performance and memory use must be verified on the target machine.
 
 The supplied launcher targets Linux. Windows/WSL2 requires separate host setup
 and GPU validation. Do not expose this service directly to the public Internet.
+## Local model paths
+
+After following the download and rename steps in DEPLOYMENT.md:
+
+```text
+deploy/deps/checkpoints/
+|-- editor/
+|   |-- model.pth
+|   `-- vae/
+|       |-- config.json
+|       `-- diffusion_pytorch_model.safetensors
+`-- text_encoder/
+```
+
+These are the default paths in the launcher and Python configuration. No model
+path overrides are needed. Only local paths are renamed; model internals remain
+unchanged. Hugging Face download coordinates remain in the deployment guide.

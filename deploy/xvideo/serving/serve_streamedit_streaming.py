@@ -34,7 +34,7 @@ from xvideo.serving.streamedit_streaming import (
     _module_device,
 )
 
-DEFAULT_DIT_CKPT = ""
+DEFAULT_DIT_CKPT = str(REPO_ROOT / "deps" / "checkpoints" / "editor" / "model.pth")
 DEFAULT_FACE_DETECTOR_ONNX = str(REPO_ROOT / "deps" / "checkpoints" / "face_detection_yunet_2023mar.onnx")
 DEFAULT_PERSON_DETECTOR_ONNX = str(REPO_ROOT / "deps" / "checkpoints" / "yolov8n.onnx")
 FACE_DETECTOR_DOWNSAMPLE = 1.5
