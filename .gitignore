@@ -1,0 +1,20 @@
+# Vendored weights, checkpoints, and compile cache
+deploy/deps/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Runtime artifacts
+deploy/recordings/
+
+# streamedit_ops build artifacts (compiled locally via pip install)
+deploy/streamedit_ops/build/
+deploy/streamedit_ops/**/*.so
+
+# Third-party build checkouts (SageAttention, cutlass -> deploy/tmp/, see DEPLOYMENT.md §2)
+deploy/tmp/
+
+# Tooling workspace data (never part of the repo)
+.workbuddy-ai/

@@ -1,0 +1,2702 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StreamEdit</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --bg: #f0efe9;
+      --panel: #ffffff;
+      --panel-2: #faf9f5;
+      --line: #e6e4dd;
+      --text: #1c1c1c;
+      --muted: #8a8a86;
+      --accent: #f2643f;
+      --accent-2: #d7a64a;
+      --media-bg: #0d0d0d;
+      --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .topbar { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 16px 28px; }
+    .topbar .brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+    .topbar .brand { font-size: 18px; font-weight: 760; letter-spacing: .2px; }
+    .topbar .tagline { font-size: 13px; color: var(--muted); }
+    .lang-seg { margin-left: auto; display: inline-flex; gap: 3px; }
+    .lang-seg button { cursor: pointer; font-size: 12px; font-weight: 600; color: #6a6a64; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+    .lang-seg button:hover { border-color: var(--accent); color: var(--accent); }
+    .lang-seg button.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .stage { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 4px 28px 10px; }
+    .vpanel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+    .vpanel-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; }
+    .vpanel-head .vp-title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 720; }
+    .vpanel-head .vp-title .ico { font-size: 14px; color: var(--accent); }
+    .src-controls { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .media-box { position: relative; flex: 1 1 auto; min-height: 0; margin: 0 12px 12px; overflow: hidden; border-radius: 12px; background: var(--media-bg); }
+    .media-box img:not([src]) { visibility: hidden; }
+    video, canvas, img { width: 100%; height: 100%; display: block; object-fit: contain; background: var(--media-bg); }
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 20px; color: #cfcfca; }
+    .overlay .hint { font-size: 13px; color: #9a9a95; max-width: 320px; line-height: 1.5; text-wrap: balance; }
+    .overlay .idle-ico { font-size: 30px; color: #6f6f6a; }
+    .res-banner { text-align: center; font-size: 14px; font-weight: 700; color: #231900; background: #f5b32b; border-top: 1px solid rgba(0,0,0,.18); border-bottom: 1px solid rgba(0,0,0,.24); padding: 9px 12px; line-height: 1.45; }
+    .res-banner .res-ico { margin-right: 6px; font-size: 15px; }
+    @keyframes streamedit-spin { to { transform: rotate(360deg); } }
+    .idle-ico.spin { display: inline-block; animation: streamedit-spin 1.1s linear infinite; }
+    .wait-overlay { background: var(--media-bg); z-index: 3; }
+    .wait-overlay .idle-ico { font-size: 40px; color: var(--accent); }
+    .wait-overlay .hint { font-size: 15px; color: #d9d9d4; font-weight: 600; max-width: 380px; }
+    .toast { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+             z-index: 4; padding: 10px 18px; border-radius: 999px; max-width: 80%;
+             background: rgba(20,20,22,.66); color: #fff; font-size: 14px; font-weight: 600;
+             text-align: center; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+             backdrop-filter: blur(2px); pointer-events: none; opacity: 0;
+             transition: opacity .25s ease; }
+    .toast.show { opacity: 1; }
+    .download-bubble { position: absolute; right: 14px; bottom: 14px; z-index: 5; cursor: pointer;
+             padding: 9px 16px; border: none; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 700;
+             color: #fff; background: var(--accent); box-shadow: 0 4px 18px rgba(242,100,63,.45);
+             opacity: 0; transform: translateY(8px); transition: opacity .3s ease, transform .3s ease;
+             animation: bubblePulse 2s ease-in-out infinite; }
+    .download-bubble.show { opacity: 1; transform: translateY(0); }
+    .download-bubble:hover { filter: brightness(1.06); }
+    @keyframes bubblePulse { 0%,100% { box-shadow: 0 4px 18px rgba(242,100,63,.45); } 50% { box-shadow: 0 4px 26px rgba(242,100,63,.75); } }
+    .start-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 640; color: #fff; background: rgba(40,40,40,.92); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 11px 20px; }
+    .start-btn:hover { background: rgba(64,64,64,.95); }
+    .crop-mask { position: absolute; display: none; pointer-events: none; border-radius: 8px; outline: 2px solid rgba(255,255,255,.9); outline-offset: -1px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); z-index: 1; }
+    .crop-mask.show { display: block; }
+    #camera { transform: scaleX(-1); }
+    #camera.no-mirror { transform: none; }
+    .cmdbar { position: relative; flex: 0 0 auto; margin: 0 28px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 12px 14px; }
+    .cmd-row { display: flex; align-items: center; gap: 12px; }
+    .ref-slot { flex: 0 0 auto; position: relative; }
+    .ref-add { display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 12px; border: 1px dashed var(--line); color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; user-select: none; }
+    .ref-add:hover { border-color: var(--muted); color: var(--text); }
+    .ref-slot.has-thumb .ref-add { display: none; }
+    .ref-thumb { display: none; position: relative; width: 46px; height: 46px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+    .ref-slot.has-thumb .ref-thumb { display: block; }
+    .ref-thumb img { width: 100%; height: 100%; object-fit: cover; background: var(--panel-2); cursor: zoom-in; }
+    .ref-thumb .ref-clear { position: absolute; top: 2px; right: 2px; z-index: 2; box-sizing: border-box; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; border: 1px solid rgba(255,255,255,.55); font-size: 12px; line-height: 15px; text-align: center; cursor: pointer; padding: 0; }
+    .ref-lightbox { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.82); align-items: center; justify-content: center; cursor: zoom-out; padding: 24px; }
+    .ref-lightbox.show { display: flex; }
+    .ref-lightbox img { max-width: 92vw; max-height: 92vh; object-fit: contain; border-radius: 10px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
+    .cmd-input { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; resize: none; font: inherit; font-size: 15px; color: var(--text); line-height: 1.4; max-height: 150px; padding: 12px 4px; }
+    .cmd-input::placeholder { color: #b6b6b0; }
+    .send-fab { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer; background: var(--accent); color: #fff; font-size: 0; display: inline-flex; align-items: center; justify-content: center; }
+    .send-fab::before { content: "\2191"; font-size: 20px; font-weight: 700; line-height: 1; }
+    .send-fab:hover { filter: brightness(1.05); }
+    .send-fab:disabled, .send-fab.busy { opacity: .5; cursor: not-allowed; }
+    .send-fab.busy::before { content: "\22EF"; }
+    .latency-row { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 8px 6px 0; font-size: 12px; color: var(--muted); }
+    .latency-row #netReadout, .latency-row #dispLatency, .latency-row #fpsReadout { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cmd-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin: 8px 6px 0; font-size: 12px; color: var(--muted); }
+    .cmd-foot .res-readout { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cmd-foot .pe-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    .seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; }
+    .seg button { margin: 0; padding: 3px 12px; font-size: 12px; font-weight: 600; color: #6a6a64; background: transparent; border: none; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
+    .seg button:hover { color: var(--accent); }
+    .seg button.on { color: #fff; background: var(--accent); }
+    .cmd-foot .steps-field { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .cmd-foot .steps-field input { width: 52px; margin: 0; padding: 3px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); }
+    .cmd-foot .blend-field { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .cmd-foot .blend-field input[type=range] { width: 96px; margin: 0; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
+    .cmd-foot .blend-field .blend-val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 30px; color: var(--text); }
+    .cmd-foot .kvreset-field { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .cmd-foot .kvreset-field input { width: 64px; margin: 0; padding: 3px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); }
+    .qtier { display: inline-flex; gap: 3px; }
+    .qtier button { width: auto; margin: 0; padding: 2px 9px; font-size: 12px; font-weight: 600; color: #6a6a64; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; white-space: nowrap; }
+    .qtier button:hover { border-color: var(--accent); color: var(--accent); }
+    .qtier button.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .qtier button.auto-active { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .cmd-foot .pe-toggle[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+    .cmd-foot .grow { flex: 1 1 auto; }
+    .cmd-foot .send-hint { color: var(--accent); font-weight: 600; }
+    .scene-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 4px 2px; }
+    .scene-row .scene-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
+    .pe-result { display: none; margin: 8px 6px 0; padding: 7px 10px; font-size: 12px; line-height: 1.5; color: var(--muted); background: rgba(120,160,200,0.08); border: 1px solid rgba(120,160,200,0.18); border-radius: 8px; white-space: pre-wrap; word-break: break-word; max-height: 6.5em; overflow-y: auto; }
+    .pe-result .pe-result-label { color: var(--text); font-weight: 600; margin-right: 6px; }
+    .chip { cursor: pointer; font-size: 13px; font-weight: 560; color: #45443f; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 7px 15px; }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+    .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .chip.chip-ref { background: linear-gradient(180deg,#fff5e0,#ffe9c2); border-color: #e3b761; color: #8a5a12; font-weight: 700; }
+    .chip.chip-ref::before { content: "📎 "; }
+    .chip.chip-ref:hover { border-color: var(--accent); color: #8a5a12; }
+    .chip.chip-ref.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .cards-pop { display: none; position: absolute; left: 14px; right: 14px; bottom: calc(100% + 8px); z-index: 20; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+    .cards-pop.open { display: block; }
+    .cards-pop .pop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; max-height: 46vh; overflow: auto; }
+    button.prompt-case { text-align: left; cursor: pointer; margin: 0; padding: 9px 11px; line-height: 1.35; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--text); }
+    button.prompt-case:hover { border-color: var(--accent); }
+    button.prompt-case.has-ref { background: linear-gradient(180deg,#fffaf0,#fff3dd); border-color: #e3c98f; border-left: 3px solid var(--accent); }
+    button.prompt-case.has-ref:hover { border-color: var(--accent); }
+    .prompt-case .pc-title { display: block; font-size: 13px; font-weight: 700; }
+    .prompt-case .pc-desc { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+    .legacy-hidden { display: none !important; }
+    #maxTemporalIdsWrap { display: none; }
+    .metric { color: var(--muted); font-size: 11px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+    .stats-grid .stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+    .stats-grid .stat-label { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stats-grid .stat-value { font-size: 13px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .stat-value.accent { color: var(--accent); }
+    .stat-value.warn { color: var(--accent-2); }
+    .stage-timings-wrap { flex: 0 0 auto; margin: 0 12px 12px; }
+    .stage-timings-wrap .st-title { font-size: 11px; color: var(--muted); margin: 0 2px 6px; }
+    #netReadout.net-warn { color: #e5343d; font-weight: 700; }
+    @media (max-width: 1000px) {
+      body { height: auto; min-height: 100vh; overflow: auto; }
+      .topbar { padding: 10px 12px; }
+      .topbar .brand { white-space: nowrap; }
+      .topbar .tagline { display: none; }
+      .res-banner { text-wrap: balance; text-wrap: pretty; }
+      /* keep the two panels side by side: portrait video suits two columns */
+      .stage { gap: 8px; padding: 4px 8px 8px; }
+      .vpanel-head { padding: 8px 10px; }
+      .media-box { aspect-ratio: 9 / 16; max-height: 52vh; margin: 0 8px 8px; }
+      .cmdbar { margin: 0 8px 14px; }
+      .cmd-foot .kvreset-field { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; }
+      .qtier { flex-wrap: wrap; }
+      .qtier button { padding: 7px 12px; }
+      /* panel titles go icon-only so 摄像头/MP4 fits the narrow head */
+      .vpanel-head .vp-title span[data-i18n] { display: none; }
+      .cmd-input { font-size: 12px; max-height: 125px; }
+      /* bottom sheet: the cmdbar is tall on mobile, absolute-above would cover the camera */
+      .cards-pop { position: fixed; left: 8px; right: 8px; bottom: 8px; }
+    }
+    @media (max-width: 1000px) and (orientation: landscape) {
+      .media-box { aspect-ratio: 16 / 9; max-height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand-dot"></span>
+  <span class="brand">StreamEdit</span>
+  <span class="tagline" data-i18n="tagline">流式视频编辑体验</span>
+  <span id="langToggle" class="lang-seg" role="group" aria-label="Language">
+    <button type="button" data-lang="zh">中文</button>
+    <button type="button" data-lang="en">EN</button>
+  </span>
+</div>
+<div class="res-banner" id="resBanner" style="display:none"><span class="res-ico">⚠️</span><span id="resBannerText"></span></div>
+
+<div class="stage">
+  <div class="vpanel">
+    <div class="vpanel-head">
+      <span class="vp-title"><span class="ico">📷</span> <span data-i18n="src_title">原始画面</span></span>
+      <span class="src-controls">
+        <span id="sourceSeg" class="seg" role="tablist">
+          <button id="segCamera" type="button" class="on" data-src="camera" data-i18n="seg_camera">摄像头</button>
+          <button id="segMp4" type="button" data-src="mp4">MP4</button>
+        </span>
+        <input id="videoFile" type="file" accept="video/*" style="display:none" />
+      </span>
+    </div>
+    <div class="media-box">
+      <video id="camera" autoplay muted playsinline></video>
+      <div id="cropMask" class="crop-mask"></div>
+      <div id="cameraOverlay" class="overlay">
+        <button id="startCameraBtn" type="button" class="start-btn" data-i18n="start_camera">📷 开启摄像头</button>
+        <div class="hint" data-i18n="camera_hint">仅采集画面，不支持语音；指令请使用文字输入</div>
+      </div>
+    </div>
+  </div>
+  <div class="vpanel">
+    <div class="vpanel-head">
+      <span class="vp-title"><span class="ico">✨</span> <span data-i18n="out_title">编辑结果</span></span>
+    </div>
+    <div class="media-box">
+      <img id="outputImg" alt="编辑输出" data-i18n-alt="output_img_alt" />
+      <canvas id="outputCanvas" style="display:none"></canvas>
+      <video id="outputResult" playsinline controls style="display:none; position:absolute; inset:0; z-index:4;"></video>
+      <button id="downloadBubble" type="button" class="download-bubble" style="display:none" data-i18n="download_done">✨ 编辑完成 · 下载</button>
+      <div id="outputIdleOverlay" class="overlay">
+        <div class="idle-ico">✨</div>
+        <div class="hint" data-i18n="wait_edit_cmd">等待编辑指令</div>
+      </div>
+      <div id="outputWaitOverlay" class="overlay wait-overlay" style="display:none">
+        <div id="outputWaitIco" class="idle-ico">👤</div>
+        <div id="outputWaitHint" class="hint" data-i18n="face_camera">请正对摄像头</div>
+      </div>
+      <div id="outputStartOverlay" class="overlay wait-overlay" style="display:none">
+        <div class="idle-ico spin">⏳</div>
+        <div id="outputStartHint" class="hint" data-i18n="busy_starting">正在启动</div>
+      </div>
+      <div id="outputToast" class="toast"></div>
+    </div>
+    <div id="stageTimingsPanel" class="stage-timings-wrap" style="display:none">
+      <div class="st-title" data-i18n="prof_title">性能分析（各阶段耗时 · 开启会略降性能）</div>
+      <div id="stageTimings" class="stats-grid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="cmdbar">
+  <div class="cmd-row">
+    <div id="refSlot" class="ref-slot">
+      <label id="refAdd" class="ref-add" for="refImage">＋</label>
+      <div id="refThumb" class="ref-thumb">
+        <img id="refThumbImg" alt="reference" />
+        <button id="refClear" type="button" class="ref-clear">×</button>
+      </div>
+      <input id="refImage" type="file" accept="image/*" style="display:none" />
+    </div>
+    <textarea id="prompt" class="cmd-input" rows="1" placeholder="描述你想要的编辑效果" data-i18n-ph="prompt_ph"></textarea>
+    <button id="send" class="send-fab"></button>
+  </div>
+  <div class="latency-row">
+    <span id="netReadout" class="keep-min">-</span>
+    <span id="dispLatency" class="keep-min">-</span>
+    <span id="fpsReadout" class="keep-min">-</span>
+    <span id="sendHint" class="send-hint keep-min"></span>
+  </div>
+  <div class="cmd-foot minimal">
+    <label id="peToggle" class="pe-toggle keep-min"><input id="usePe" type="checkbox" checked style="width:auto" /> <span data-i18n="pe_toggle">提示词增强</span></label>
+    <label id="gateToggle" class="pe-toggle keep-min"><input id="dbgGateEnabled" type="checkbox" checked style="width:auto" /> <span data-i18n="gate_toggle">人物在场检测</span></label>
+    <label id="profToggle" class="pe-toggle keep-min"><input id="profileTimings" type="checkbox" style="width:auto" /> <span data-i18n="prof_toggle">性能分析</span></label>
+    <span class="kvreset-field keep-min">
+      <span data-i18n="upload_quality">上传清晰度</span>
+      <span id="upqTier" class="qtier">
+        <button type="button" data-upq="0.2" data-i18n="q_low">低</button>
+        <button type="button" data-upq="0.4" data-i18n="q_mid">中</button>
+        <button type="button" data-upq="0.6" data-i18n="q_high">高</button>
+        <button type="button" data-upq="auto" class="on" data-i18n="q_auto">自动</button>
+      </span>
+    </span>
+    <span class="kvreset-field keep-min">
+      <span data-i18n="download_quality">下载清晰度</span>
+      <span id="qtier" class="qtier">
+        <button type="button" data-q="20" data-i18n="q_low">低</button>
+        <button type="button" data-q="40" data-i18n="q_mid">中</button>
+        <button type="button" data-q="60" data-i18n="q_high">高</button>
+        <button type="button" data-q="auto" class="on" data-i18n="q_auto">自动</button>
+      </span>
+      <input id="downQualityUi" type="hidden" />
+    </span>
+    <span class="kvreset-field keep-min">
+      <span data-i18n="frame_speed">送帧速度</span>
+      <span id="fpsTier" class="qtier">
+        <button type="button" data-fps="32">32</button>
+        <button type="button" data-fps="30">30</button>
+        <button type="button" data-fps="28">28</button>
+        <button type="button" data-fps="24" class="on">24</button>
+        <button type="button" data-fps="20">20</button>
+        <button type="button" data-fps="16">16</button>
+        <button type="button" data-fps="12">12</button>
+        <button type="button" data-fps="8">8</button>
+      </span>
+    </span>
+  </div>
+  <div id="peResult" class="pe-result" style="display:none"></div>
+  <div class="scene-row">
+    <span class="scene-label" data-i18n="scene_label">例子：</span>
+    <div id="sceneChips" style="display:contents"></div>
+  </div>
+  <div id="cardsPop" class="cards-pop"></div>
+</div>
+
+<div class="legacy-hidden">
+  <div class="row">
+    <div><input id="width" type="number" value="840" /></div>
+    <div><input id="height" type="number" value="480" /></div>
+  </div>
+  <div class="row">
+    <div><input id="cameraFps" type="number" value="24" min="1" max="60" /></div>
+    <div><input id="fps" type="number" value="24" min="1" max="32" /></div>
+  </div>
+  <div class="row">
+    <div><input id="quality" type="number" value="0.6" min="0.1" max="1" step="0.01" /></div>
+  </div>
+  <input id="steps" type="number" value="2" min="1" max="8" />
+  <label><input id="smoothPlayback" type="checkbox" checked /> <span data-i18n="smooth_playback">平滑输出播放</span></label>
+  <div id="playbackDelayWrap" class="row">
+    <div><input id="targetQueueDelayMs" type="number" value="200" min="0" max="5000" step="50" /></div>
+    <div><input id="maxQueueDelayMs" type="number" value="300" min="0" max="8000" step="50" /></div>
+  </div>
+  <input id="kvResetFrames" type="number" value="600" min="0" step="1" />
+  <label><input id="useMaxTemporalIds" type="checkbox" checked /> <span data-i18n="max_temporal">最大时序 ID</span></label>
+  <div id="maxTemporalIdsWrap"><input id="maxTemporalIds" type="number" value="8" min="1" step="1" /></div>
+  <label><input id="freezeKvOnStatic" type="checkbox" /> <span data-i18n="freeze_kv">静止时冻结 KV</span></label>
+  <input id="staticDiffThresh" type="number" value="2.0" min="0" step="0.5" />
+</div>
+<canvas id="capture" style="display:none"></canvas>
+<div id="refLightbox" class="ref-lightbox"><img id="refLightboxImg" alt="reference enlarged" /></div>
+<script>
+const SERVER_DEFAULTS = __SERVER_DEFAULTS__;
+
+const I18N = {
+  zh: {
+    tagline: "流式视频编辑体验",
+    src_title: "原始画面",
+    out_title: "编辑结果",
+    seg_camera: "摄像头",
+    start_camera: "📷 开启摄像头",
+    camera_hint: "仅采集画面，不支持语音；指令请使用文字输入",
+    output_img_alt: "编辑输出",
+    download_done: "✨ 编辑完成 · 下载",
+    wait_edit_cmd: "等待编辑指令",
+    face_camera: "请正对摄像头",
+    prof_title: "性能分析（各阶段耗时 · 开启会略降性能）",
+    prompt_ph: "描述你想要的编辑效果",
+    net_label: "网络延迟",
+    disp_label: "显示延迟",
+    fps_label: "发/收/显",
+    pe_toggle: "提示词增强",
+    gate_toggle: "人物在场检测",
+    prof_toggle: "性能分析",
+    upload_quality: "上传清晰度",
+    download_quality: "下载清晰度",
+    frame_speed: "送帧速度",
+    q_low: "低", q_mid: "中", q_high: "高", q_auto: "自动",
+    scene_label: "例子：",
+    smooth_playback: "平滑输出播放",
+    max_temporal: "最大时序 ID",
+    freeze_kv: "静止时冻结 KV",
+    pe_enhanced_label: "增强提示词",
+    busy_starting: "正在启动",
+    busy_running: "正在运行",
+    busy_camera_err: "摄像头错误",
+    busy_queue: "排队 #",
+    busy_resetting: "正在重置会话",
+    hint_no_face: "请正对摄像头，露出完整的脸 😊",
+    hint_no_person: "未检测到人，请回到画面中 😊",
+    gate_too_close: "请让上半身入镜（坐正 / 把脸移到画面上半部）",
+    gate_too_small: "离得有点远，请靠近一点让人脸更清晰",
+    gate_face_cut: "脸没完整入镜，请让整张脸都在画面里",
+    gate_off_center: "请把脸移到画面中间",
+    pe_running: "画面就绪，正在增强提示词",
+    stage_pil: "PIL→张量", stage_vae_enc: "VAE 编码", stage_dit: "DiT 去噪",
+    stage_kv: "KV cache", stage_vae_dec: "VAE 解码", stage_jpeg: "JPEG 解码", stage_h264: "H264 编码",
+    stage_q_enc: "排队·编码", stage_q_dit: "排队·DiT", stage_q_dec: "排队·解码",
+    stage_q_pseudo: "排队·伪编码", stage_q_post: "排队·后处理",
+    stage_ws: "WS 发送", stage_total: "服务端合计", stage_residence: "服务端驻留",
+    stage_enc_q: "编码队列", stage_ws_buf: "发送缓冲", stage_recv_q: "接收队列",
+    busy_released: "已释放", busy_disconnected: "已断开", busy_conn_err: "连接错误",
+    reset_count_changed: "检测到人数变化，重新编辑",
+    reset_person_returned: "重新检测到人，重新开始编辑",
+    reset_kv: "已连续编辑较久，正在重新校准，请保持人脸居中 😊",
+    gate_settling: "保持不动，正在对焦",
+    gate_no_face_wait: "没有检测到人脸，请正对摄像头 😊",
+    toast_done: "✨ 编辑完成，点右下角气泡下载",
+    toast_finalizing: "✨ 编辑完成，正在生成可下载视频",
+    edit_processing: "✨ 正在编辑",
+    q_downgrade_auto: " · 已自动降到低画质", q_downgrade_hint: " · 建议降低画质",
+    flow_drop_tail: " · 带宽不足，正在丢帧保延迟",
+    up_auto_tail: " · 上行已自动降至中档",
+    res_notice: "本演示运行在 {res}，而非模型原生的 1248×720 分辨率，画质与编辑效果会有所下降。",
+  },
+  en: {
+    tagline: "Streaming video editing",
+    src_title: "Source",
+    out_title: "Result",
+    seg_camera: "Camera",
+    start_camera: "📷 Start camera",
+    camera_hint: "Video only, no audio; type your instruction as text",
+    output_img_alt: "Edited output",
+    download_done: "✨ Done · Download",
+    wait_edit_cmd: "Waiting for an edit instruction",
+    face_camera: "Face the camera",
+    prof_title: "Profiling (per-stage timing · slight perf cost when on)",
+    prompt_ph: "Describe the edit you want",
+    net_label: "Network",
+    disp_label: "Display lag",
+    fps_label: "out/in/disp",
+    pe_toggle: "Prompt Enhance",
+    gate_toggle: "Presence Gate",
+    prof_toggle: "Profiling",
+    upload_quality: "Upload quality",
+    download_quality: "Download quality",
+    frame_speed: "Frame rate",
+    q_low: "Low", q_mid: "Mid", q_high: "High", q_auto: "Auto",
+    scene_label: "Examples:",
+    smooth_playback: "Smooth playback",
+    max_temporal: "Max temporal IDs",
+    freeze_kv: "Freeze KV when static",
+    pe_enhanced_label: "Enhanced prompt",
+    busy_starting: "Starting",
+    busy_running: "Running",
+    busy_camera_err: "Camera error",
+    busy_queue: "Queue #",
+    busy_resetting: "Resetting session",
+    hint_no_face: "Face the camera and show your full face 😊",
+    hint_no_person: "No person detected, please step back into frame 😊",
+    gate_too_close: "Show your upper body (sit up / move your face to the upper half)",
+    gate_too_small: "A bit far — move closer so your face is clearer",
+    gate_face_cut: "Your face is cut off — fit your whole face in frame",
+    gate_off_center: "Move your face to the center",
+    pe_running: "Frame ready, enhancing the prompt",
+    stage_pil: "PIL→Tensor", stage_vae_enc: "VAE encode", stage_dit: "DiT denoise",
+    stage_kv: "KV cache", stage_vae_dec: "VAE decode", stage_jpeg: "JPEG decode", stage_h264: "H264 encode",
+    stage_q_enc: "Queue·encode", stage_q_dit: "Queue·DiT", stage_q_dec: "Queue·decode",
+    stage_q_pseudo: "Queue·pseudo", stage_q_post: "Queue·post",
+    stage_ws: "WS send", stage_total: "Server total", stage_residence: "Server residence",
+    stage_enc_q: "Encode queue", stage_ws_buf: "Send buffer", stage_recv_q: "Recv queue",
+    busy_released: "Released", busy_disconnected: "Disconnected", busy_conn_err: "Connection error",
+    reset_count_changed: "Person count changed, re-editing",
+    reset_person_returned: "Person detected again, restarting the edit",
+    reset_kv: "Editing for a while — recalibrating, please keep your face centered 😊",
+    gate_settling: "Hold still, focusing",
+    gate_no_face_wait: "No face detected, please face the camera 😊",
+    toast_done: "✨ Done — click the bubble at bottom-right to download",
+    toast_finalizing: "✨ Done — generating the downloadable video",
+    edit_processing: "✨ Editing",
+    q_downgrade_auto: " · auto-lowered to low quality", q_downgrade_hint: " · consider lowering quality",
+    flow_drop_tail: " · bandwidth limited, dropping frames",
+    up_auto_tail: " · uplink auto-lowered to mid",
+    res_notice: "This demo runs at {res}, not the model's native 1248×720 resolution; visual quality and edit fidelity are reduced.",
+  },
+};
+let currentLang = localStorage.getItem("streamedit_lang") || "en";
+function t(key) {
+  const d = I18N[currentLang] || I18N.zh;
+  return (key in d) ? d[key] : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+}
+function sceneField(obj, name) {
+  if (currentLang === "en") {
+    const v = obj[name + "_en"];
+    if (v !== undefined && v !== null && v !== "") return v;
+  }
+  return obj[name];
+}
+function applyLang() {
+  document.documentElement.lang = currentLang === "en" ? "en" : "zh-CN";
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.textContent = t(el.getAttribute("data-i18n"));
+  }
+  for (const el of document.querySelectorAll("[data-i18n-ph]")) {
+    el.setAttribute("placeholder", t(el.getAttribute("data-i18n-ph")));
+  }
+  for (const el of document.querySelectorAll("[data-i18n-alt]")) {
+    el.setAttribute("alt", t(el.getAttribute("data-i18n-alt")));
+  }
+  const langBtn = document.getElementById("langToggle");
+  if (langBtn) {
+    for (const b of langBtn.querySelectorAll("button")) {
+      b.classList.toggle("on", b.getAttribute("data-lang") === currentLang);
+    }
+  }
+  if (typeof renderPromptCases === "function") { try { renderPromptCases(); } catch (err) {} }
+  if (typeof updateMetrics === "function") { try { updateMetrics(); } catch (err) {} }
+  if (typeof updateResBanner === "function") { try { updateResBanner(); } catch (err) {} }
+}
+function setLang(lang) {
+  if (lang !== "en" && lang !== "zh") return;
+  if (lang === currentLang) return;
+  currentLang = lang;
+  localStorage.setItem("streamedit_lang", currentLang);
+  applyLang();
+}
+let REF_IMAGES = {};
+const camera = document.getElementById("camera");
+const capture = document.getElementById("capture");
+const outputImg = document.getElementById("outputImg");
+const outputCanvas = document.getElementById("outputCanvas");
+const outputCanvasCtx = outputCanvas.getContext("2d");
+const stageTimings = document.getElementById("stageTimings");
+const stageTimingsPanel = document.getElementById("stageTimingsPanel");
+const peResultEl = document.getElementById("peResult");
+function showPeResult(text, model) {
+  if (!peResultEl) return;
+  const txt = (text || "").trim();
+  if (!txt) { peResultEl.style.display = "none"; peResultEl.textContent = ""; return; }
+  peResultEl.innerHTML = "";
+  const lbl = document.createElement("span");
+  lbl.className = "pe-result-label";
+  lbl.textContent = t("pe_enhanced_label") + (model ? " (" + model + ")" : "");
+  peResultEl.appendChild(lbl);
+  peResultEl.appendChild(document.createTextNode(txt));
+  peResultEl.style.display = "block";
+}
+function hidePeResult() {
+  if (peResultEl) { peResultEl.style.display = "none"; peResultEl.textContent = ""; }
+}
+const sendBtn = document.getElementById("send");
+const maxTemporalIdsWrap = document.getElementById("maxTemporalIdsWrap");
+const startCameraBtn = document.getElementById("startCameraBtn");
+const cameraOverlay = document.getElementById("cameraOverlay");
+const outputIdleOverlay = document.getElementById("outputIdleOverlay");
+const outputWaitOverlay = document.getElementById("outputWaitOverlay");
+const outputWaitIco = document.getElementById("outputWaitIco");
+const outputWaitHint = document.getElementById("outputWaitHint");
+const outputToast = document.getElementById("outputToast");
+const sendHintEl = document.getElementById("sendHint");
+const netReadoutEl = document.getElementById("netReadout");
+const dispLatencyEl = document.getElementById("dispLatency");
+const fpsReadoutEl = document.getElementById("fpsReadout");
+const refSlot = document.getElementById("refSlot");
+const refThumbImg = document.getElementById("refThumbImg");
+const sceneChipsEl = document.getElementById("sceneChips");
+const cardsPop = document.getElementById("cardsPop");
+const peToggleEl = document.getElementById("peToggle");
+
+function setSendBusy(busy, hint) {
+  if (sendBtn) {
+    sendBtn.disabled = busy;
+    sendBtn.classList.toggle("busy", busy);
+  }
+  if (hint !== undefined && sendHintEl) sendHintEl.textContent = hint;
+  if (!busy) { const _so = document.getElementById("outputStartOverlay"); if (_so) _so.style.display = "none"; }
+}
+
+let outputToastTimer = null;
+function showOutputToast(text, ms) {
+  if (!outputToast || !text) return;
+  outputToast.textContent = text;
+  outputToast.classList.add("show");
+  if (outputToastTimer) clearTimeout(outputToastTimer);
+  outputToastTimer = setTimeout(() => { outputToast.classList.remove("show"); }, ms || 2600);
+}
+function hideOutputToast() {
+  if (outputToastTimer) { clearTimeout(outputToastTimer); outputToastTimer = null; }
+  if (outputToast) outputToast.classList.remove("show");
+}
+function showCameraOverlay(show) {
+  if (cameraOverlay) cameraOverlay.style.display = show ? "" : "none";
+  updateCropMask();
+}
+function showOutputIdle(show) {
+  if (outputIdleOverlay) outputIdleOverlay.style.display = show ? "" : "none";
+  if (show && outputWaitOverlay) { outputWaitOverlay.style.display = "none"; outputWaitingFace = false; waitHintReason = null; }
+}
+function updateResBanner() {
+  const el = document.getElementById("resBanner");
+  const txt = document.getElementById("resBannerText");
+  const wEl = document.getElementById("width");
+  const hEl = document.getElementById("height");
+  if (!el || !txt || !wEl || !hEl) return;
+  const w = Number(wEl.value) || 0;
+  const h = Number(hEl.value) || 0;
+  if (!w || !h || w * h >= 720 * 1248 * 0.9) { el.style.display = "none"; return; }
+  txt.textContent = t("res_notice").replace("{res}", w + "×" + h);
+  el.style.display = "";
+}
+function showOutputStart(show, text) {
+  const ov = document.getElementById("outputStartOverlay");
+  if (!ov) return;
+  if (show) {
+    if (outputIdleOverlay) outputIdleOverlay.style.display = "none";
+    if (outputWaitOverlay) outputWaitOverlay.style.display = "none";
+    const el = document.getElementById("outputStartHint");
+    if (el && text !== undefined) el.textContent = text;
+    ov.style.display = "";
+  } else {
+    ov.style.display = "none";
+  }
+}
+
+const cropMaskEl = document.getElementById("cropMask");
+function updateCropMask() {
+  if (!cropMaskEl) return;
+  const vw = camera.videoWidth || 0;
+  const vh = camera.videoHeight || 0;
+  const boxW = camera.clientWidth || 0;
+  const boxH = camera.clientHeight || 0;
+  if (!vw || !vh || !boxW || !boxH || usingVideoFile ||
+      (cameraOverlay && cameraOverlay.style.display !== "none")) {
+    cropMaskEl.classList.remove("show");
+    return;
+  }
+  const scale = Math.min(boxW / vw, boxH / vh);
+  const dispW = vw * scale;
+  const dispH = vh * scale;
+  const dispLeft = camera.offsetLeft + (boxW - dispW) / 2;
+  const dispTop = camera.offsetTop + (boxH - dispH) / 2;
+  const tW = Number(document.getElementById("width").value) || vw;
+  const tH = Number(document.getElementById("height").value) || vh;
+  const dstAr = tW / tH;
+  const srcAr = vw / vh;
+  let fw, fh;
+  if (srcAr > dstAr) { fh = 1; fw = (vh * dstAr) / vw; }
+  else { fw = 1; fh = (vw / dstAr) / vh; }
+  const cropW = dispW * fw;
+  const cropH = dispH * fh;
+  const cropLeft = dispLeft + (dispW - cropW) / 2;
+  const cropTop = dispTop + (dispH - cropH) / 2;
+  cropMaskEl.style.left = cropLeft + "px";
+  cropMaskEl.style.top = cropTop + "px";
+  cropMaskEl.style.width = cropW + "px";
+  cropMaskEl.style.height = cropH + "px";
+  cropMaskEl.classList.add("show");
+}
+window.addEventListener("resize", updateCropMask);
+if (window.ResizeObserver && camera) {
+  try { new ResizeObserver(() => updateCropMask()).observe(camera); } catch (e) {}
+}
+// the camera track rotates with the device; re-pick orientation while idle
+camera.addEventListener("resize", () => {
+  if (usingVideoFile || startingRun || sessionGranted) return;
+  const vw = camera.videoWidth, vh = camera.videoHeight;
+  if (!vw || !vh) return;
+  const want = vh > vw ? "portrait" : "landscape";
+  if (currentOrientation() !== want) applyOrientation(want);
+});
+let ws = null;
+let stream = null;
+let videoFileUrl = null;
+let terminalHold = false;
+let usingVideoFile = false;
+let timer = null;
+let tickInFlight = false;
+let pePausedSend = false;
+let peDeferThisSend = false;
+let videoPullActive = false;
+let videoPullIdx = 0;
+const videoPullFps = 24;
+let videoPullTotal = 0;
+const outputResult = document.getElementById("outputResult");
+let resultBlobUrl = null;
+let finalizeIsForResult = false;
+let resultEpoch = 0;
+let resultSyncActive = false;
+let resultSyncHandlers = null;
+let finalizeWatchdog = null;
+function stopRecordDrain() {
+  if (finalizeWatchdog) { clearTimeout(finalizeWatchdog); finalizeWatchdog = null; }
+}
+let startingRun = false;
+let sessionGranted = false;
+let peCache = null;
+let pendingPeCacheKey = null;
+let outputPlaybackTimer = null;
+let outputPlaybackIntervalMs = null;
+const DEFAULT_TARGET_OUTPUT_QUEUE_DELAY_MS = 200;
+const DEFAULT_MAX_OUTPUT_QUEUE_DELAY_MS = 300;
+function targetOutputQueueDelayMs() {
+  const el = document.getElementById("targetQueueDelayMs");
+  const raw = el && el.value !== "" ? el.value : null;
+  const v = raw === null ? NaN : Number(raw);
+  const target = Number.isFinite(v) && v >= 0 ? v : DEFAULT_TARGET_OUTPUT_QUEUE_DELAY_MS;
+  return Math.min(target, maxOutputQueueDelayMs());
+}
+function maxOutputQueueDelayMs() {
+  const el = document.getElementById("maxQueueDelayMs");
+  const raw = el && el.value !== "" ? el.value : null;
+  const v = raw === null ? NaN : Number(raw);
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_MAX_OUTPUT_QUEUE_DELAY_MS;
+}
+const MAX_BACKEND_PENDING_FRAMES = 32;
+let sendRealtimeSkips = 0;
+let sentFrames = 0;
+let backendAckedFrames = 0;
+let backendOutFrames = 0;
+let receivedFrames = 0;
+let displayedFrames = 0;
+let lastObjectUrl = null;
+let alignMaxAgeMs = 0;
+let lastShownCaptureMs = 0;
+let pendingRevokeUrl = null;
+let lastSourceObjectUrl = null;
+let refImagePreviewDataUrl = null;
+let injectedRefImageDataUrl = null;
+let suppressPeThisSend = false;
+let outputWaitingFace = false;
+let waitHintReason = null;
+let waitHintAt = 0;
+let autoQuality = true;
+const WAIT_HINT_MIN_MS = 500;
+let pendingOutputMeta = null;
+let outputFrameQueue = [];
+let outputQueueDroppedFrames = 0;
+let cameraTrackFps = null;
+let cameraMeasuredFps = 0;
+let cameraMeasuredFrames = 0;
+let cameraMeasureStartedAt = performance.now();
+let lastVideoQualityFrames = null;
+let sendActualFps = 0;
+let receiveActualFps = 0;
+let editActualFps = 0;
+let sentFramesWindow = 0;
+let receivedFramesWindow = 0;
+let displayedFramesWindow = 0;
+let meterStartedAt = performance.now();
+let editReceiveLatencyLastMs = null;
+let editLatencyLastMs = null;
+let netRttLastMs = null;
+let netPingTimer = null;
+let flowDropTotal = 0;
+let flowDropAt = 0;
+let upDelayMs = null;
+let upDelayHist = [];
+let downDelayMs = null;
+let downSkewMin = null;
+let downSkewAt = 0;
+let upAuto = true;
+let upAutoHigh = true;
+let upAutoClear = 0;
+let upResumeKeyframe = false;
+let serverChunkLastSec = null;
+let chunkProfileLast = null;
+let sessionProfileTimings = false;
+let lastWsSendMs = null;
+let lastServerResidenceMs = null;
+
+
+function fmt(value, suffix = "") {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  if (typeof value === "number") return `${value.toFixed(value >= 10 ? 1 : 2)}${suffix}`;
+  return `${value}${suffix}`;
+}
+
+function backendPendingFrames() {
+  return Math.max(0, sentFrames - backendAckedFrames);
+}
+
+function noteBackendAck(msg) {
+  const framesIn = Number(msg && msg.frames_in);
+  if (Number.isFinite(framesIn)) {
+    backendAckedFrames = Math.max(backendAckedFrames, framesIn);
+  }
+  const framesOut = Number(msg && msg.frames_out);
+  if (Number.isFinite(framesOut)) {
+    backendOutFrames = Math.max(backendOutFrames, framesOut);
+    if (usingVideoFile && (videoPullActive || finalizeIsForResult)) updateUploadProgress();
+  }
+}
+
+function smoothPlaybackEnabled() {
+  const el = document.getElementById("smoothPlayback");
+  return !el || el.checked;
+}
+
+function currentOrientation() {
+  const w = Number(document.getElementById("width").value) || 0;
+  const h = Number(document.getElementById("height").value) || 0;
+  return h > w ? "portrait" : "landscape";
+}
+function defaultCameraOrientation() {
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  const portraitViewport = window.innerHeight > window.innerWidth;
+  return (isMobile || portraitViewport) ? "portrait" : "landscape";
+}
+function orientDims(o) {
+  const d = SERVER_DEFAULTS || {};
+  const a = Number(d.width) || 840;
+  const b = Number(d.height) || 480;
+  const long = Math.max(a, b), short = Math.min(a, b);
+  return o === "portrait" ? { width: short, height: long } : { width: long, height: short };
+}
+function applyOrientation(o) {
+  const dims = orientDims(o);
+  document.getElementById("width").value = dims.width;
+  document.getElementById("height").value = dims.height;
+  updateCropMask();
+  updateMetrics();
+}
+
+function refImageSelected() {
+  const el = document.getElementById("refImage");
+  return !!(el && el.files && el.files[0]);
+}
+
+function maxTemporalIdsValue() {
+  const enabled = document.getElementById("useMaxTemporalIds");
+  if (!enabled || !enabled.checked) return null;
+  const m = Math.floor(Number(document.getElementById("maxTemporalIds").value));
+  return Number.isFinite(m) && m > 0 ? m : null;
+}
+
+function peCacheKey(rawPrompt, refImage) {
+  return JSON.stringify({ prompt: rawPrompt || "", refImage: refImage || "" });
+}
+
+function startFrameTimer() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  stopVideoPull();
+  if (usingVideoFile) {
+    startVideoPull();
+  } else {
+    const fps = sendTargetFps();
+    timer = setInterval(tick, Math.floor(1000 / fps));
+  }
+  ensureOutputPlaybackTimer(true);
+  startNetPingTimer();
+}
+
+function startNetPingTimer() {
+  if (netPingTimer) clearInterval(netPingTimer);
+  netPingTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: "ping", t: Date.now(), recv: receivedFrames, rtt: netRttLastMs })); } catch (err) {}
+    }
+    autoQualityTick();
+  }, 1000);
+}
+
+function readRefImageDataUrl() {
+  const el = document.getElementById("refImage");
+  const file = el && el.files && el.files[0];
+  if (!file) {
+    if (injectedRefImageDataUrl) {
+      refImagePreviewDataUrl = injectedRefImageDataUrl;
+      return Promise.resolve(injectedRefImageDataUrl);
+    }
+    refImagePreviewDataUrl = null;
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      refImagePreviewDataUrl = String(reader.result || "");
+      resolve(refImagePreviewDataUrl);
+    };
+    reader.onerror = () => reject(reader.error || new Error("failed to read ref image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function applyRefImagePreview() {
+  if (!refImagePreviewDataUrl) return false;
+  if (lastSourceObjectUrl) URL.revokeObjectURL(lastSourceObjectUrl);
+  lastSourceObjectUrl = null;
+  return true;
+}
+
+function updateSourceFrameVisibility() {
+  const enabled = refImageSelected() || !!refImagePreviewDataUrl;
+  if (!enabled) {
+    if (lastSourceObjectUrl) URL.revokeObjectURL(lastSourceObjectUrl);
+    lastSourceObjectUrl = null;
+    return;
+  }
+  applyRefImagePreview();
+}
+
+async function handleRefImageChange() {
+  injectedRefImageDataUrl = null;
+  if (!refImageSelected()) {
+    refImagePreviewDataUrl = null;
+    if (lastSourceObjectUrl) URL.revokeObjectURL(lastSourceObjectUrl);
+    lastSourceObjectUrl = null;
+    updateSourceFrameVisibility();
+    syncRefThumb();
+    updateMetrics();
+    return;
+  }
+  try {
+    await readRefImageDataUrl();
+    applyRefImagePreview();
+  } catch (err) {
+  }
+  updateSourceFrameVisibility();
+  syncRefThumb();
+  updateMetrics();
+}
+
+function updateMaxTemporalIdsVisibility() {
+  const enabled = document.getElementById("useMaxTemporalIds").checked;
+  document.getElementById("maxTemporalIds").disabled = !enabled;
+  if (maxTemporalIdsWrap) maxTemporalIdsWrap.style.display = enabled ? "block" : "none";
+}
+
+function cameraTargetFps() {
+  return Math.max(1, Number(document.getElementById("cameraFps").value) || 24);
+}
+
+function sendTargetFps() {
+  return Math.max(1, Number(document.getElementById("fps").value) || 8);
+}
+
+function outputPlaybackFps() {
+  const configured = sendTargetFps();
+  const measured = cameraMeasuredFps > 0.5 ? cameraMeasuredFps : (cameraTrackFps || configured);
+  return Math.max(1, Math.min(configured, measured || configured));
+}
+
+function outputQueueLimitFrames() {
+  return Math.max(4, Math.ceil(outputPlaybackFps() * maxOutputQueueDelayMs() / 1000));
+}
+
+function outputQueueTargetFrames() {
+  return Math.max(2, Math.ceil(outputPlaybackFps() * targetOutputQueueDelayMs() / 1000));
+}
+
+function getCameraSettings() {
+  const track = stream ? stream.getVideoTracks()[0] : null;
+  return track ? track.getSettings() : {};
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
+
+function statCell(label, value, tone = "") {
+  const cls = tone ? ` ${tone}` : "";
+  return `<div class="stat"><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value${cls}">${escapeHtml(value)}</div></div>`;
+}
+
+function renderStageTimings() {
+  if (!sessionProfileTimings) return;
+  const p = chunkProfileLast;
+  if (!p || p.dit_denoise_s === undefined) return;
+  const ms = (key) => {
+    const v = Number(p[key]);
+    return Number.isFinite(v) ? v * 1000 : null;
+  };
+  const cards = [];
+  const push = (label, key, tone = "") => cards.push(statCell(label, fmt(ms(key), "ms"), tone));
+
+  const _encQ = (typeof upEncoder !== "undefined" && upEncoder) ? (upEncoder.encodeQueueSize || 0) : 0;
+  const _wsBuf = (ws && ws.readyState === WebSocket.OPEN) ? (ws.bufferedAmount || 0) : 0;
+  cards.push(statCell(t("stage_enc_q"), String(_encQ), _encQ >= 3 ? "warn" : ""));
+  cards.push(statCell(t("stage_ws_buf"), (_wsBuf / 1024).toFixed(0) + " KB", _wsBuf > 131072 ? "warn" : ""));
+  const _recvQ = (typeof outputFrameQueue !== "undefined" && outputFrameQueue) ? outputFrameQueue.length : 0;
+  cards.push(statCell(t("stage_recv_q"), _recvQ + " · " + (outCodecH264 ? "h264" : "mjpeg"), _recvQ >= 16 ? "warn" : ""));
+
+  if (Number.isFinite(Number(p.jpeg_decode_ms))) {
+    cards.push(statCell(t("stage_jpeg"), fmt(Number(p.jpeg_decode_ms), "ms")));
+  }
+  push(t("stage_pil"), "frames_to_tensor_s");
+  push(t("stage_vae_enc"), "vae_encode_s");
+  push(t("stage_dit"), "dit_denoise_s", "accent");
+  push(t("stage_kv"), "kv_store_s");
+  push(t("stage_vae_dec"), "vae_decode_s");
+  if (Number.isFinite(Number(p.h264_encode_s))) {
+    cards.push(statCell(t("stage_h264"), fmt(Number(p.h264_encode_s) * 1000, "ms")));
+  }
+  push(t("stage_q_enc"), "q_wait_encode_s");
+  push(t("stage_q_dit"), "q_wait_dit_s");
+  push(t("stage_q_dec"), "q_wait_decode_s");
+  push(t("stage_q_pseudo"), "q_wait_pseudo_s");
+  push(t("stage_q_post"), "q_wait_postprocess_s");
+  const wsSendMs = Number.isFinite(Number(p.ws_send_s)) ? ms("ws_send_s") : lastWsSendMs;
+  const residenceMs = Number.isFinite(Number(p.server_residence_s)) ? ms("server_residence_s") : lastServerResidenceMs;
+  cards.push(statCell(t("stage_ws"), fmt(wsSendMs, "ms")));
+  cards.push(statCell(t("stage_total"), fmt(ms("total_server_chunk_s"), "ms"), "warn"));
+  cards.push(statCell(t("stage_residence"), fmt(residenceMs, "ms"), "warn"));
+
+  stageTimings.innerHTML = cards.join("");
+}
+
+function updateMetrics() {
+  renderStageTimings();
+  if (netReadoutEl) {
+    const _rtt = netRttLastMs;
+    const _hi = _rtt !== null && _rtt !== undefined && _rtt > 300;
+    const _fd = flowDropAt > 0 && Date.now() - flowDropAt < 3000;
+    const _ua = upAuto && !upAutoHigh && ws && ws.readyState === WebSocket.OPEN;
+    let _tail = "";
+    if (_hi) _tail = autoQuality ? (autoQTier < 2 ? t("q_downgrade_auto") : "") : t("q_downgrade_hint");
+    if (_ua) _tail = t("up_auto_tail");
+    if (_fd) _tail = t("flow_drop_tail");
+    netReadoutEl.textContent = t("net_label") + " " + fmt(_rtt, "ms") + _tail;
+    netReadoutEl.classList.toggle("net-warn", _hi || _fd || _ua);
+  }
+  if (dispLatencyEl) {
+    dispLatencyEl.textContent = t("disp_label") + " " + fmt(editLatencyLastMs, "ms");
+  }
+  fpsReadoutEl.textContent = t("fps_label") + " " + sendActualFps.toFixed(1) + "/" + receiveActualFps.toFixed(1) + "/" + editActualFps.toFixed(1);
+}
+
+function updateRateMeters() {
+  const now = performance.now();
+  const elapsed = Math.max((now - meterStartedAt) / 1000, 0.001);
+  sendActualFps = sentFramesWindow / elapsed;
+  receiveActualFps = receivedFramesWindow / elapsed;
+  editActualFps = displayedFramesWindow / elapsed;
+  sentFramesWindow = 0;
+  receivedFramesWindow = 0;
+  displayedFramesWindow = 0;
+  meterStartedAt = now;
+  ensureOutputPlaybackTimer();
+  updateMetrics();
+}
+
+function disposeItem(item) {
+  if (!item) return;
+  if (item.bmp) { try { item.bmp.close(); } catch (e) {} item.bmp = null; }
+  if (item.url) { try { URL.revokeObjectURL(item.url); } catch (e) {} item.url = null; }
+}
+
+function blankOutputPane() {
+  if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+  lastObjectUrl = null;
+  if (pendingRevokeUrl) { URL.revokeObjectURL(pendingRevokeUrl); pendingRevokeUrl = null; }
+  outputImg.onload = outputImg.onerror = null;
+  outputImg.removeAttribute("src");
+  outputCanvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+}
+
+function displayOutputFrame(item) {  if (!item) return;
+  if (item.meta && item.meta.t_capture_ms) lastShownCaptureMs = Number(item.meta.t_capture_ms);
+  if (outputWaitingFace) {
+    outputWaitingFace = false;
+    waitHintReason = null;
+    if (outputWaitOverlay) outputWaitOverlay.style.display = "none";
+  }
+  if (item.bmp) {
+    if (outputCanvas.width !== item.bmp.width || outputCanvas.height !== item.bmp.height) {
+      outputCanvas.width = item.bmp.width;
+      outputCanvas.height = item.bmp.height;
+    }
+    outputCanvasCtx.drawImage(item.bmp, 0, 0);
+    item.bmp.close();
+    item.bmp = null;
+  } else {
+    if (pendingRevokeUrl) { URL.revokeObjectURL(pendingRevokeUrl); pendingRevokeUrl = null; }
+    pendingRevokeUrl = lastObjectUrl;
+    lastObjectUrl = item.url;
+    outputImg.onload = outputImg.onerror = function() {
+      if (pendingRevokeUrl) { URL.revokeObjectURL(pendingRevokeUrl); pendingRevokeUrl = null; }
+      outputImg.onload = outputImg.onerror = null;
+    };
+    outputImg.src = item.url;
+  }
+  displayedFrames += 1;
+  displayedFramesWindow += 1;
+  const meta = item.meta;
+  if (meta) {
+    const latency = Date.now() - Number(meta.t_capture_ms || Date.now());
+    editLatencyLastMs = latency;
+    serverChunkLastSec = Number(meta.server_elapsed || 0);
+    chunkProfileLast = meta.profile || chunkProfileLast;
+  } else {
+  }
+  updateMetrics();
+}
+
+function effectivePlaybackIntervalMs() {
+  const base = Math.max(16, Math.round(1000 / outputPlaybackFps()));
+  const q = outputFrameQueue.length;
+  const target = outputQueueTargetFrames();
+  if (q <= target) return base;
+  const over = (q - target) / Math.max(1, target);
+  const speed = Math.min(2, 1 + over);
+  return Math.max(8, Math.round(base / speed));
+}
+
+function alignTargetMs() {
+  return Math.min(2500, Math.max(200, alignMaxAgeMs + targetOutputQueueDelayMs()));
+}
+
+function pumpOutputFrame() {
+  if (!smoothPlaybackEnabled()) return;
+  const T = alignTargetMs();
+  const now = Date.now();
+  let shown = 0;
+  while (outputFrameQueue.length > 0 && shown < 4) {
+    const head = outputFrameQueue[0];
+    const tcap = head.meta && Number(head.meta.t_capture_ms);
+    if (tcap && (now - tcap) < T) break;
+    displayOutputFrame(outputFrameQueue.shift());
+    shown++;
+  }
+  ensureOutputPlaybackTimer();
+}
+
+function ensureOutputPlaybackTimer(force = false) {
+  if (!smoothPlaybackEnabled()) {
+    if (outputPlaybackTimer) clearInterval(outputPlaybackTimer);
+    outputPlaybackTimer = null;
+    outputPlaybackIntervalMs = null;
+    return;
+  }
+  const intervalMs = effectivePlaybackIntervalMs();
+  if (!force && outputPlaybackTimer && outputPlaybackIntervalMs === intervalMs) return;
+  if (outputPlaybackTimer) clearInterval(outputPlaybackTimer);
+  outputPlaybackIntervalMs = intervalMs;
+  outputPlaybackTimer = setInterval(pumpOutputFrame, intervalMs);
+}
+
+function clearOutputQueue() {
+  for (const item of outputFrameQueue) disposeItem(item);
+  outputFrameQueue = [];
+}
+
+function resetRunMetrics() {
+  sentFrames = 0;
+  backendAckedFrames = 0;
+  backendOutFrames = 0;
+  receivedFrames = 0;
+  displayedFrames = 0;
+  sendRealtimeSkips = 0;
+  tickInFlight = false;
+  sentFramesWindow = 0;
+  receivedFramesWindow = 0;
+  displayedFramesWindow = 0;
+  sendActualFps = 0;
+  receiveActualFps = 0;
+  editActualFps = 0;
+  meterStartedAt = performance.now();
+  editReceiveLatencyLastMs = null;
+  editLatencyLastMs = null;
+  netRttLastMs = null;
+  upDelayMs = null;
+  upDelayHist = [];
+  downDelayMs = null;
+  downSkewMin = null;
+  downSkewAt = 0;
+  upAutoHigh = true;
+  upAutoClear = 0;
+  syncUpQualityUi();
+  upResumeKeyframe = false;
+  serverChunkLastSec = null;
+  chunkProfileLast = null;
+  lastWsSendMs = null;
+  lastServerResidenceMs = null;
+  pendingOutputMeta = null;
+  outputQueueDroppedFrames = 0;
+  lastShownCaptureMs = 0;
+  clearOutputQueue();
+  hideOutputToast();
+  if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+  lastObjectUrl = null;
+  if (pendingRevokeUrl) { URL.revokeObjectURL(pendingRevokeUrl); pendingRevokeUrl = null; }
+  outputImg.onload = outputImg.onerror = null;
+  outputImg.removeAttribute("src");
+  if (lastSourceObjectUrl) URL.revokeObjectURL(lastSourceObjectUrl);
+  lastSourceObjectUrl = null;
+  hidePeResult();
+  updateSourceFrameVisibility();
+  sessionProfileTimings = false;
+  stageTimings.innerHTML = "";
+  stageTimingsPanel.style.display = "none";
+}
+
+function trimOutputQueueForLatency() {
+  const limitFrames = outputQueueLimitFrames();
+  if (outputFrameQueue.length <= limitFrames) return;
+  const targetFrames = outputQueueTargetFrames();
+  while (outputFrameQueue.length > targetFrames) {
+    const dropped = outputFrameQueue.shift();
+    disposeItem(dropped);
+    outputQueueDroppedFrames += 1;
+  }
+}
+
+let h264DecodeOk = false;
+if (typeof VideoDecoder !== "undefined") {
+  VideoDecoder.isConfigSupported({ codec: "avc1.640028", optimizeForLatency: true })
+    .then((s) => { h264DecodeOk = !!(s && s.supported); })
+    .catch(() => {});
+}
+let outCodecH264 = false;
+let outDecoder = null;
+let outDecSeq = 0;
+const outMetaByTs = new Map();
+
+let upCodecH264 = false;
+let upEncoder = null;
+const UPLINK_KEYFRAME_INTERVAL = 8;
+let upSeq = 0;
+const upPendingByTs = new Map();
+
+function effectiveUpQuality() {
+  if (upAuto) return upAutoHigh ? 0.6 : 0.4;
+  return Number(document.getElementById("quality").value) || 0.4;
+}
+
+function upEncoderBitrate(width, height) {
+  const REF_PX = 1248 * 720;
+  const REF_BITRATE = effectiveUpQuality() * 4000000;
+  const REF_FPS = 16;
+  return Math.round(REF_BITRATE * (width * height / REF_PX) * Math.sqrt(sendTargetFps() / REF_FPS));
+}
+
+function uplinkCongestionTick() {
+  if (!upAuto) return;
+  if (!(ws && ws.readyState === WebSocket.OPEN && sessionGranted)) return;
+  if (usingVideoFile) return;
+  const buf = ws.bufferedAmount || 0;
+  const upLow = upDelayHist.length
+    ? Math.min.apply(null, upDelayHist.slice(-3))
+    : null;
+  if (upAutoHigh) {
+    if ((upLow !== null && upLow > 350) || buf > 262144) {
+      upAutoHigh = false;
+      upAutoClear = 0;
+      resetUplinkEncoder();
+      highlightUpqTier("auto");
+      updateMetrics();
+    }
+  } else {
+    const clear = (upLow === null || upLow < 120) && buf < 65536;
+    upAutoClear = clear ? upAutoClear + 1 : 0;
+    if (upAutoClear >= 8) {
+      upAutoHigh = true;
+      upAutoClear = 0;
+      resetUplinkEncoder();
+      highlightUpqTier("auto");
+      updateMetrics();
+    }
+  }
+}
+
+function upEncoderConfig(width, height) {
+  return {
+    codec: "avc1.42E028",
+    width,
+    height,
+    bitrate: upEncoderBitrate(width, height),
+    framerate: sendTargetFps(),
+    latencyMode: "realtime",
+    avc: { format: "annexb" },
+  };
+}
+
+function resetUplinkEncoder() {
+  if (upEncoder && upEncoder.state !== "closed") {
+    try { upEncoder.close(); } catch (e) {}
+  }
+  upEncoder = null;
+  upSeq = 0;
+  upPendingByTs.clear();
+}
+
+function ensureUplinkEncoder(width, height) {
+  if (upEncoder && upEncoder.state === "configured") return;
+  upEncoder = new VideoEncoder({
+    output: (chunk) => {
+      const info = upPendingByTs.get(chunk.timestamp);
+      upPendingByTs.delete(chunk.timestamp);
+      if (!info || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if ((ws.bufferedAmount || 0) > 786432) {
+        upResumeKeyframe = true;
+        return;
+      }
+      const buf = new ArrayBuffer(chunk.byteLength);
+      chunk.copyTo(buf);
+      try {
+        ws.send(JSON.stringify({ type: "frame_meta", seq: info.seq, t_capture_ms: info.t_capture_ms }));
+        ws.send(buf);
+      } catch (e) {
+        return;
+      }
+      sentFrames += 1;
+      sentFramesWindow += 1;
+      updateMetrics();
+    },
+    error: (e) => { console.error("VideoEncoder", e); },
+  });
+  upEncoder.configure(upEncoderConfig(width, height));
+}
+
+function encodeUplinkFrame(width, height) {
+  drawCaptureFrame(width, height);
+  ensureUplinkEncoder(width, height);
+  const seq = ++upSeq;
+  upPendingByTs.set(seq, { seq, t_capture_ms: Date.now() });
+  let forceKey = false;
+  if (upResumeKeyframe && ws && (ws.bufferedAmount || 0) < 131072) {
+    forceKey = true;
+    upResumeKeyframe = false;
+  }
+  const vf = new VideoFrame(capture, { timestamp: seq });
+  upEncoder.encode(vf, { keyFrame: forceKey || seq === 1 || seq % UPLINK_KEYFRAME_INTERVAL === 0 });
+  vf.close();
+}
+
+function resetOutputDecoder() {
+  if (outDecoder && outDecoder.state !== "closed") {
+    try { outDecoder.close(); } catch (e) {}
+  }
+  outDecoder = null;
+  outDecSeq = 0;
+  outMetaByTs.clear();
+}
+
+function feedOutputH264(buf, meta) {
+  if (!outDecoder || outDecoder.state === "closed") {
+    outDecoder = new VideoDecoder({
+      output: (frame) => {
+        const m = outMetaByTs.get(frame.timestamp);
+        outMetaByTs.delete(frame.timestamp);
+        createImageBitmap(frame).then((bmp) => {
+          frame.close();
+          enqueueOutputFrame(bmp, m);
+        }, () => { frame.close(); });
+      },
+      error: (e) => { console.error("VideoDecoder", e); },
+    });
+    outDecoder.configure({ codec: "avc1.640028", optimizeForLatency: true });
+    outDecSeq = 0;
+    outMetaByTs.clear();
+  }
+  const key = !!(meta && meta.key);
+  if (outDecSeq === 0 && !key) return;
+  const ts = ++outDecSeq;
+  if (meta) outMetaByTs.set(ts, meta);
+  outDecoder.decode(new EncodedVideoChunk({ type: key ? "key" : "delta", timestamp: ts, data: buf }));
+}
+
+function enqueueOutputFrame(frame, meta) {
+  const item = frame instanceof ImageBitmap
+    ? { bmp: frame, meta, receivedAtMs: Date.now() }
+    : { url: URL.createObjectURL(frame), meta, receivedAtMs: Date.now() };
+  if (!smoothPlaybackEnabled()) {
+    displayOutputFrame(item);
+    return;
+  }
+  const tc = Number(item.meta && item.meta.t_capture_ms) || 0;
+  if (tc && tc <= lastShownCaptureMs) {
+    disposeItem(item); outputQueueDroppedFrames += 1;
+    return;
+  }
+  if (meta && meta.t_capture_ms && !(meta.profile && meta.profile.passthrough)) {
+    const age = Date.now() - Number(meta.t_capture_ms);
+    if (age > 0 && age < 5000) alignMaxAgeMs = Math.max(age, alignMaxAgeMs * 0.99);
+  }
+  outputFrameQueue.push(item);
+  if (tc) {
+    let i = outputFrameQueue.length - 1;
+    while (i > 0 && (Number(outputFrameQueue[i - 1].meta && outputFrameQueue[i - 1].meta.t_capture_ms) || 0) > tc) {
+      outputFrameQueue[i] = outputFrameQueue[i - 1];
+      i--;
+    }
+    outputFrameQueue[i] = item;
+  }
+  while (outputFrameQueue.length > (outCodecH264 ? 32 : 120)) {
+    const dropped = outputFrameQueue.shift();
+    if (dropped) { disposeItem(dropped); outputQueueDroppedFrames += 1; }
+  }
+  ensureOutputPlaybackTimer();
+  updateMetrics();
+}
+
+function flushOutputQueueToLatest() {
+  while (outputFrameQueue.length > 1) {
+    const dropped = outputFrameQueue.shift();
+    disposeItem(dropped);
+    outputQueueDroppedFrames += 1;
+  }
+  if (outputFrameQueue.length === 1) displayOutputFrame(outputFrameQueue.shift());
+}
+
+function measureCameraFrame(now) {
+  cameraMeasuredFrames += 1;
+  const elapsed = Math.max((now - cameraMeasureStartedAt) / 1000, 0.001);
+  if (elapsed >= 1) {
+    cameraMeasuredFps = cameraMeasuredFrames / elapsed;
+    cameraMeasuredFrames = 0;
+    cameraMeasureStartedAt = now;
+    updateMetrics();
+  }
+  if (camera.requestVideoFrameCallback) {
+    camera.requestVideoFrameCallback(measureCameraFrame);
+  }
+}
+
+function measureCameraFallback() {
+  if (!camera.getVideoPlaybackQuality) return;
+  const quality = camera.getVideoPlaybackQuality();
+  if (!quality || quality.totalVideoFrames === undefined) return;
+  if (lastVideoQualityFrames === null) {
+    lastVideoQualityFrames = quality.totalVideoFrames;
+    return;
+  }
+  cameraMeasuredFps = Math.max(0, quality.totalVideoFrames - lastVideoQualityFrames);
+  lastVideoQualityFrames = quality.totalVideoFrames;
+  updateMetrics();
+}
+
+setInterval(updateRateMeters, 1000);
+setInterval(measureCameraFallback, 1000);
+updateMetrics();
+
+async function ensureCamera() {
+  if (usingVideoFile) {
+    cameraTrackFps = null;
+    updateMetrics();
+    return;
+  }
+  if (stream) {
+    const settings = getCameraSettings();
+    cameraTrackFps = settings.frameRate || null;
+    updateMetrics();
+    return;
+  }
+  if (window.isSecureContext === false) {
+    throw new Error("Camera access requires HTTPS or localhost; public HTTP origins cannot use getUserMedia.");
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error("navigator.mediaDevices.getUserMedia is unavailable");
+  }
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: cameraTargetFps(), max: Math.max(cameraTargetFps(), 24) }
+    },
+    audio: false
+  });
+  camera.muted = true;
+  camera.playsInline = true;
+  camera.srcObject = stream;
+  await new Promise((resolve) => {
+    if (camera.readyState >= 2) resolve();
+    else camera.onloadedmetadata = resolve;
+    setTimeout(resolve, 2000);
+  });
+  await camera.play();
+  const settings = getCameraSettings();
+  cameraTrackFps = settings.frameRate || null;
+  const camVW = camera.videoWidth || 0;
+  const camVH = camera.videoHeight || 0;
+  if (camVW && camVH) {
+    const want = camVH > camVW ? "portrait" : "landscape";
+    if (currentOrientation() !== want) applyOrientation(want);
+  }
+  updateMetrics();
+  updateCropMask();
+  if (camera.requestVideoFrameCallback) {
+    camera.requestVideoFrameCallback(measureCameraFrame);
+  }
+}
+
+function drawCaptureFrame(width, height) {
+  capture.width = width;
+  capture.height = height;
+  const ctx = capture.getContext("2d");
+  const selfieMirror = !usingVideoFile;
+  ctx.save();
+  if (selfieMirror) {
+    ctx.translate(width, 0);
+    ctx.scale(-1, 1);
+  }
+  const sw = camera.videoWidth || width;
+  const sh = camera.videoHeight || height;
+  const dstAr = width / height;
+  const srcAr = sw / sh;
+  let sx, sy, cropW, cropH;
+  if (srcAr > dstAr) {
+    cropH = sh;
+    cropW = Math.round(sh * dstAr);
+    sx = Math.round((sw - cropW) / 2);
+    sy = 0;
+  } else {
+    cropW = sw;
+    cropH = Math.round(sw / dstAr);
+    sx = 0;
+    sy = Math.round((sh - cropH) / 2);
+  }
+  ctx.drawImage(camera, sx, sy, cropW, cropH, 0, 0, width, height);
+  ctx.restore();
+}
+
+function frameBlob(width, height, quality) {
+  drawCaptureFrame(width, height);
+  return new Promise(resolve => capture.toBlob(resolve, "image/jpeg", quality));
+}
+
+async function tick() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (pePausedSend) return;
+  if (tickInFlight) {
+    sendRealtimeSkips += 1;
+    updateMetrics();
+    return;
+  }
+  tickInFlight = true;
+  try {
+    if (backendPendingFrames() >= MAX_BACKEND_PENDING_FRAMES) {
+      sendRealtimeSkips += 1;
+      updateMetrics();
+      return;
+    }
+    const width = Number(document.getElementById("width").value);
+    const height = Number(document.getElementById("height").value);
+    if (upCodecH264) {
+      encodeUplinkFrame(width, height);
+      updateMetrics();
+      return;
+    }
+    const blob = await frameBlob(width, height, effectiveUpQuality());
+    if (!blob || ws.readyState !== WebSocket.OPEN) return;
+    const seq = sentFrames + 1;
+    const tCaptureMs = Date.now();
+    try {
+      ws.send(JSON.stringify({ type: "frame_meta", seq, t_capture_ms: tCaptureMs }));
+      if (ws.readyState !== WebSocket.OPEN) return;
+      ws.send(blob);
+    } catch (err) {
+      return;
+    }
+    sentFrames += 1;
+    sentFramesWindow += 1;
+    updateMetrics();
+  } finally {
+    tickInFlight = false;
+  }
+}
+
+function seekVideoTo(timeSec) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; camera.removeEventListener("seeked", finish); resolve(); };
+    camera.addEventListener("seeked", finish, { once: true });
+    try { camera.currentTime = timeSec; } catch (err) { finish(); }
+    setTimeout(finish, 400);
+  });
+}
+async function sendCurrentVideoFrame(mediaTimeSec) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  const width = Number(document.getElementById("width").value);
+  const height = Number(document.getElementById("height").value);
+  const quality = effectiveUpQuality();
+  const blob = await frameBlob(width, height, quality);
+  if (!blob || ws.readyState !== WebSocket.OPEN) return false;
+  const seq = sentFrames + 1;
+  const tCaptureMs = Math.round(mediaTimeSec * 1000);
+  try {
+    ws.send(JSON.stringify({ type: "frame_meta", seq, t_capture_ms: tCaptureMs }));
+    if (ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(blob);
+  } catch (err) {
+    return false;
+  }
+  sentFrames += 1;
+  sentFramesWindow += 1;
+  updateMetrics();
+  return true;
+}
+async function pullNextVideoFrame() {
+  if (!videoPullActive) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) { videoPullActive = false; return; }
+  if (pePausedSend) return;
+  if (videoPullIdx >= videoPullTotal) {
+    videoPullActive = false;
+    handleVideoEnded();
+    return;
+  }
+  const frameStartMs = Date.now();
+  const intervalMs = 1000 / Math.max(1, videoPullFps);
+  if (backendPendingFrames() >= MAX_BACKEND_PENDING_FRAMES) {
+    setTimeout(() => { pullNextVideoFrame(); }, 30);
+    return;
+  }
+  const t = videoPullIdx / videoPullFps;
+  await seekVideoTo(t);
+  if (!videoPullActive || pePausedSend) return;
+  const ok = await sendCurrentVideoFrame(t);
+  if (!videoPullActive) return;
+  if (ok) videoPullIdx += 1;
+  const spent = Date.now() - frameStartMs;
+  const wait = ok ? Math.max(0, intervalMs - spent) : 30;
+  setTimeout(() => { pullNextVideoFrame(); }, wait);
+}
+function startVideoPull() {
+  const dur = (Number.isFinite(camera.duration) && camera.duration > 0) ? camera.duration : 0;
+  videoPullTotal = dur > 0 ? Math.max(1, Math.ceil(dur * videoPullFps)) : Number.MAX_SAFE_INTEGER;
+  videoPullIdx = 0;
+  videoPullActive = true;
+  pullNextVideoFrame();
+}
+function stopVideoPull() { videoPullActive = false; }
+
+async function beginSession() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  resetRunMetrics();
+  pePausedSend = false;
+  clearResultVideo();
+  if (usingVideoFile) {
+    camera.loop = false;
+    try { camera.pause(); } catch (err) {}
+    try { camera.currentTime = 0; } catch (err) {}
+  }
+  updateSourceFrameVisibility();
+  let refImage = null;
+  try {
+    refImage = await readRefImageDataUrl();
+    if (refImage) applyRefImagePreview();
+  } catch (err) {
+  }
+  const rawPrompt = document.getElementById("prompt").value;
+  const peSuppressed = suppressPeThisSend;
+  suppressPeThisSend = false;
+  const usePe = !peSuppressed && !refImage && document.getElementById("usePe").checked;
+  const width = Number(document.getElementById("width").value);
+  const height = Number(document.getElementById("height").value);
+  const cacheKey = peCacheKey(rawPrompt, refImage);
+  pendingPeCacheKey = usePe ? cacheKey : null;
+  let cachedEnhancedPrompt = null;
+  peDeferThisSend = false;
+  if (usePe && peCache && peCache.key === cacheKey && peCache.enhanced_prompt) {
+    cachedEnhancedPrompt = peCache.enhanced_prompt;
+    showPeResult(cachedEnhancedPrompt, peCache.model);
+  } else if (usePe) {
+    peDeferThisSend = true;
+    hidePeResult();
+  } else {
+    pendingPeCacheKey = null;
+    hidePeResult();
+  }
+  upCodecH264 = false;
+  if (!usingVideoFile && typeof VideoEncoder !== "undefined") {
+    try {
+      const s = await VideoEncoder.isConfigSupported(upEncoderConfig(width, height));
+      upCodecH264 = !!(s && s.supported);
+    } catch (e) {}
+  }
+  const startPayload = {
+    type: "start",
+    prompt: rawPrompt,
+    width,
+    height,
+    num_inference_steps: Number(document.getElementById("steps").value),
+    use_pe: usePe,
+    gate_enabled: faceGateDebugEnabled(),
+    seed: SERVER_DEFAULTS.seed,
+    kv_reset_frames: Math.max(0, Math.floor(Number(document.getElementById("kvResetFrames").value) || 0)),
+    output_quality: Number(downQualityUi.value),
+    fps: sendTargetFps(),
+    output_codec: h264DecodeOk ? "h264" : "mjpeg",
+    input_codec: upCodecH264 ? "h264" : "mjpeg"
+  };
+  if (usingVideoFile) {
+    startPayload.source = "file";
+    startPayload.gate_enabled = false;
+  }
+  if (cachedEnhancedPrompt) startPayload.enhanced_prompt = cachedEnhancedPrompt;
+  if (refImage) startPayload.ref_image = refImage;
+  const maxTemporalIds = maxTemporalIdsValue();
+  if (maxTemporalIds !== null) startPayload.max_temporal_ids = maxTemporalIds;
+  startPayload.freeze_kv_on_static = document.getElementById("freezeKvOnStatic").checked;
+  const sdt = parseFloat(document.getElementById("staticDiffThresh").value);
+  startPayload.static_diff_thresh = Number.isFinite(sdt) ? sdt : 0.5;
+  startPayload.profile_timings = document.getElementById("profileTimings").checked;
+  sessionProfileTimings = startPayload.profile_timings;
+  stageTimingsPanel.style.display = sessionProfileTimings ? "" : "none";
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(startPayload));
+  return true;
+}
+
+async function start() {
+  startingRun = true;
+  terminalHold = false;
+  setSendBusy(true, t("busy_starting"));
+  showOutputStart(true, t("busy_starting"));
+  try {
+    await ensureCamera();
+  } catch (err) {
+    startingRun = false;
+    setSendBusy(false, t("busy_camera_err"));
+    return;
+  }
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${protocol}://${location.host}/ws`);
+  ws = socket;
+  socket.binaryType = "arraybuffer";
+  socket.onopen = async () => {
+  };
+  socket.onmessage = async (event) => {
+    if (typeof event.data === "string") {
+      const msg = JSON.parse(event.data);
+      noteBackendAck(msg);
+      if (msg.type === "queue_position") {
+        const ahead = Number(msg.ahead != null ? msg.ahead : msg.position) || 0;
+        setSendBusy(true, t("busy_queue") + ahead);
+        return;
+      }
+      if (msg.type === "session_granted") {
+        sessionGranted = true;
+        setSendBusy(true, t("busy_starting"));
+        showOutputStart(true, t("busy_starting"));
+        beginSession();
+        return;
+      }
+      if (msg.type === "started") {
+        if (Number(msg.width) > 0 && Number(msg.height) > 0) {
+          document.getElementById("width").value = msg.width;
+          document.getElementById("height").value = msg.height;
+          updateCropMask();
+          updateResBanner();
+        }
+        outCodecH264 = msg.output_codec === "h264";
+        resetOutputDecoder();
+        outputImg.style.display = outCodecH264 ? "none" : "";
+        outputCanvas.style.display = outCodecH264 ? "" : "none";
+        upCodecH264 = msg.input_codec === "h264";
+        resetUplinkEncoder();
+        if (usingVideoFile) {
+          try { camera.pause(); } catch (err) {}
+          try { camera.currentTime = 0; } catch (err) {}
+        }
+        startingRun = false;
+        pePausedSend = false;
+        setSendBusy(false, t("busy_running"));
+        outputWaitingFace = false;
+        waitHintReason = null;
+
+        if (outputWaitOverlay) outputWaitOverlay.style.display = "none";
+        showOutputIdle(false);
+        if (usingVideoFile && peDeferThisSend) {
+          ensureOutputPlaybackTimer(true);
+          startNetPingTimer();
+          await seekVideoTo(0);
+          await sendCurrentVideoFrame(0);
+        } else {
+          startFrameTimer();
+        }
+        if (usingVideoFile) updateUploadProgress();
+        return;
+      }
+      if (msg.type === "pong") {
+        const t = Number(msg.t);
+        if (Number.isFinite(t)) {
+          netRttLastMs = Math.max(0, Date.now() - t);
+        }
+        const up = Number(msg.up_ms);
+        upDelayMs = Number.isFinite(up) ? up : null;
+        if (upDelayMs !== null) {
+          upDelayHist.push(upDelayMs);
+          if (upDelayHist.length > 4) upDelayHist.shift();
+        }
+        const ts = Number(msg.ts);
+        if (Number.isFinite(ts)) {
+          let skew = Date.now() - ts;
+          if (downSkewMin !== null) downSkewMin += 0.5 * Math.max(0, Date.now() - downSkewAt) / 1000;
+          if (downSkewMin === null || skew < downSkewMin) downSkewMin = skew;
+          downSkewAt = Date.now();
+          downDelayMs = Math.max(0, skew - downSkewMin);
+        }
+        uplinkCongestionTick();
+        updateMetrics();
+        return;
+      }
+      if (msg.type === "flow_drop") {
+        flowDropTotal = Number(msg.dropped_total) || (flowDropTotal + 1);
+        flowDropAt = Date.now();
+        updateMetrics();
+        return;
+      }
+      if (msg.type === "output_frame") {
+        pendingOutputMeta = msg;
+        return;
+      }
+      if (msg.type === "recording_finalized") {
+        onRecordingFinalized(msg);
+        return;
+      }
+      if (msg.type === "prompt_enhanced") {
+        pePausedSend = false;
+        clearOutputQueue();
+        lastShownCaptureMs = Date.now();
+        alignMaxAgeMs = 0;
+        if (usingVideoFile) {
+          try { camera.pause(); } catch (err) {}
+          startVideoPull();
+        }
+        const enhanced = msg.enhanced_prompt || msg.raw_prompt || "";
+        showPeResult((msg.error || msg.fallback) ? "" : enhanced, msg.model);
+        if (pendingPeCacheKey && msg.enhanced_prompt && !msg.error && !msg.fallback) {
+          peCache = { key: pendingPeCacheKey, enhanced_prompt: msg.enhanced_prompt, raw_prompt: msg.raw_prompt || "", model: msg.model || "" };
+        }
+        return;
+      }
+      if (msg.type === "session_reset") {
+        clearOutputQueue();
+        pendingOutputMeta = null;
+        serverChunkLastSec = null;
+        chunkProfileLast = null;
+        lastWsSendMs = null;
+        lastServerResidenceMs = null;
+        const resetMsg = {
+          person_count_changed: t("reset_count_changed"),
+          person_returned:      t("reset_person_returned"),
+          kv_reset_frames:      t("reset_kv"),
+        }[msg.reason];
+        if (resetMsg) {
+          if (msg.reason === "person_count_changed") {
+            showOutputToast(resetMsg);
+          }
+        } else {
+        }
+        updateMetrics();
+        return;
+      }
+      if (msg.type === "accepted") {
+        updateMetrics();
+        return;
+      }
+      if (msg.type === "no_person") {
+        outputWaitingFace = true;
+        clearOutputQueue();
+        pendingOutputMeta = null;
+        if (outputIdleOverlay) outputIdleOverlay.style.display = "none";
+        if (outputWaitOverlay) outputWaitOverlay.style.display = "";
+        const _noFace = (msg.reason === "no_face");
+        if (outputWaitIco) outputWaitIco.textContent = _noFace ? "🙈" : "🚫";
+        const _hint = _noFace ? t("hint_no_face") : t("hint_no_person");
+        if (outputWaitHint) outputWaitHint.textContent = _hint;
+        waitHintReason = msg.reason || "no_person"; waitHintAt = Date.now();
+        return;
+      }
+      if (msg.type === "waiting_face") {
+        outputWaitingFace = true;
+        if (outputIdleOverlay) outputIdleOverlay.style.display = "none";
+        if (outputWaitOverlay) outputWaitOverlay.style.display = "";
+        const R = msg.reason || "no_face";
+        const now = Date.now();
+        if (waitHintReason === null || (R !== waitHintReason && now - waitHintAt >= WAIT_HINT_MIN_MS)) {
+          const map = {
+            too_close:  { ico: "👕", hint: t("gate_too_close") },
+            too_small:  { ico: "🔍", hint: t("gate_too_small") },
+            face_cut:   { ico: "🙂", hint: t("gate_face_cut") },
+            off_center: { ico: "🎯", hint: t("gate_off_center") },
+            settling:   { ico: "✋", hint: t("gate_settling") },
+            no_face:    { ico: "👤", hint: t("gate_no_face_wait") },
+          };
+          const m = map[R] || map.no_face;
+          if (outputWaitIco) outputWaitIco.textContent = m.ico;
+          if (outputWaitHint) outputWaitHint.textContent = m.hint;
+          waitHintReason = R; waitHintAt = now;
+        }
+        return;
+      }
+      if (msg.type === "pe_running") {
+        pePausedSend = true;
+        if (usingVideoFile) { try { camera.pause(); } catch (err) {} }
+        outputWaitingFace = true;
+        if (outputIdleOverlay) outputIdleOverlay.style.display = "none";
+        if (outputWaitOverlay) outputWaitOverlay.style.display = "";
+        if (outputWaitIco) outputWaitIco.textContent = "✨";
+        if (outputWaitHint) outputWaitHint.textContent = t("pe_running");
+        waitHintReason = "pe_running"; waitHintAt = Date.now();
+        return;
+      }
+      if (msg.type === "chunk_done") {
+        try { ws.send(JSON.stringify({ type: "ack", recv: receivedFrames })); } catch (err) {}
+        if (
+          chunkProfileLast &&
+          (msg.ws_send_s !== undefined || msg.server_residence_s !== undefined) &&
+          (msg.chunk_idx === undefined || chunkProfileLast.chunk_idx === msg.chunk_idx)
+        ) {
+          if (msg.ws_send_s !== undefined) chunkProfileLast.ws_send_s = msg.ws_send_s;
+          if (msg.server_residence_s !== undefined) chunkProfileLast.server_residence_s = msg.server_residence_s;
+          if (msg.ws_send_s !== undefined && Number.isFinite(Number(msg.ws_send_s))) lastWsSendMs = Number(msg.ws_send_s) * 1000;
+          if (msg.server_residence_s !== undefined && Number.isFinite(Number(msg.server_residence_s))) lastServerResidenceMs = Number(msg.server_residence_s) * 1000;
+          updateMetrics();
+        }
+        return;
+      }
+      if (msg.type === "session_timeout") {
+        stopVideoPull();
+        stopRecordDrain();
+        sessionGranted = false;
+        if (!terminalHold) setSendBusy(false, t("busy_released"));
+        return;
+      }
+      if (msg.type === "error") {
+        stopVideoPull();
+        stopRecordDrain();
+        sessionGranted = false;
+        startingRun = false;
+        console.error("[server error]", msg.message || msg);
+        const hint = String(msg.message || "server error");
+        terminalHold = true;
+        setSendBusy(false, hint);
+        showOutputStart(true, hint);
+        return;
+      }
+      return;
+    }
+    if (startingRun) return;
+    const meta = pendingOutputMeta;
+    pendingOutputMeta = null;
+    receivedFrames += 1;
+    if (receivedFrames % 4 === 0) {
+      try { ws.send(JSON.stringify({ type: "ack", recv: receivedFrames })); } catch (err) {}
+    }
+    receivedFramesWindow += 1;
+    if (meta) {
+      const latency = Date.now() - Number(meta.t_capture_ms || Date.now());
+      editReceiveLatencyLastMs = latency;
+      serverChunkLastSec = Number(meta.server_elapsed || 0);
+      chunkProfileLast = meta.profile || chunkProfileLast;
+      updateMetrics();
+    }
+    if (outCodecH264) {
+      feedOutputH264(event.data, meta);
+      return;
+    }
+    enqueueOutputFrame(new Blob([event.data]), meta);
+  };
+  socket.onclose = () => {
+    if (ws !== socket) return;
+    if (timer) clearInterval(timer);
+    timer = null;
+    stopVideoPull();
+    resetOutputDecoder();
+    resetUplinkEncoder();
+    if (netPingTimer) clearInterval(netPingTimer);
+    netPingTimer = null;
+    if (outputPlaybackTimer) clearInterval(outputPlaybackTimer);
+    outputPlaybackTimer = null;
+    outputPlaybackIntervalMs = null;
+    clearOutputQueue();
+    stopRecordDrain();
+    finalizeIsForResult = false;
+    resultEpoch += 1;
+    ws = null;
+    startingRun = false;
+    sessionGranted = false;
+    if (!terminalHold) {
+      setSendBusy(false, t("busy_disconnected"));
+      showOutputIdle(true);
+    }
+    updateMetrics();
+  };
+  socket.onerror = () => {
+    if (ws === socket) {
+      startingRun = false;
+      setSendBusy(false, t("busy_conn_err"));
+    }
+  };
+}
+
+function stopActiveRun() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  stopVideoPull();
+  stopRecordDrain();
+  try { if (usingVideoFile) camera.pause(); } catch (err) {}
+  if (netPingTimer) clearInterval(netPingTimer);
+  netPingTimer = null;
+  if (outputPlaybackTimer) clearInterval(outputPlaybackTimer);
+  outputPlaybackTimer = null;
+  outputPlaybackIntervalMs = null;
+  clearOutputQueue();
+  const currentWs = ws;
+  ws = null;
+  if (currentWs) {
+    try {
+      if (currentWs.readyState === WebSocket.OPEN) currentWs.send(JSON.stringify({ type: "stop" }));
+    } catch (err) {}
+    currentWs.onopen = null;
+    currentWs.onmessage = null;
+    currentWs.onerror = null;
+    currentWs.onclose = null;
+    try { currentWs.close(); } catch (err) {}
+  }
+}
+
+async function send() {
+  if (startingRun) return;
+  if (ws && ws.readyState === WebSocket.OPEN && sessionGranted) {
+    startingRun = true;
+    setSendBusy(true, t("busy_resetting"));
+    if (timer) clearInterval(timer);
+    timer = null;
+    stopVideoPull();
+    try { if (usingVideoFile) camera.pause(); } catch (err) {}
+    clearResultVideo();
+    clearOutputQueue();
+    showOutputStart(true, t("busy_resetting"));
+    const ok = await beginSession();
+    if (ok) return;
+    startingRun = false;
+    sessionGranted = false;
+  }
+  stopActiveRun();
+  await start();
+}
+
+sendBtn.onclick = () => { suppressPeThisSend = false; send(); };
+
+const PROMPT_GROUPS = [
+  {
+    key: "change_clothes",
+    label: "实时换装", label_en: "Real-Time Outfit Change",
+    cases: [
+      { title: "白T恤", title_en: "White Tee", desc: "上衣换成白色圆领纯棉T恤", desc_en: "Top → white crew-neck cotton tee", text: "将主角的上衣换成白色圆领纯棉 T 恤。", text_en: "Replace the subject's top with a white crew-neck cotton T-shirt." },
+      { title: "皮夹克", title_en: "Leather Jacket", desc: "外套换成哑光黑色皮质机车夹克", desc_en: "Jacket → matte black leather biker jacket", text: "将主角的外套换成哑光黑色皮质机车夹克。", text_en: "Replace the subject's jacket with a matte black leather biker jacket." },
+      { title: "汉服", title_en: "Hanfu", desc: "换成传统汉服交领右衽上衣", desc_en: "Traditional cross-collar Hanfu top", text: "将主角的服装换成传统汉服交领右衽上衣。", text_en: "Replace the subject's outfit with a traditional cross-collar (right-lapel) Hanfu top." },
+      { title: "学院风衬衫", title_en: "Preppy Shirt", desc: "白衬衫配藏青V领马甲加酒红领带", desc_en: "White shirt, navy V-vest, wine tie", text: "将主角的上衣换成白衬衫搭配藏青色 V 领马甲和酒红色领带。", text_en: "Replace the subject's top with a white shirt paired with a navy V-neck vest and a wine-red tie." },
+      { title: "红色定制帽 + 墨镜", title_en: "Custom Cap + Shades", desc: "戴上印字的红色鸭舌帽和墨镜", desc_en: "Red printed cap plus sunglasses", text: "给主角戴上印有白色字母的红色鸭舌帽和墨镜。", text_en: "Put a red cap printed with white letters and a pair of sunglasses on the subject." },
+    ],
+  },
+  {
+    key: "ref_tryon",
+    label: "参考图编辑", label_en: "Edit from Reference",
+    cases: [
+      { title: "NY 棒球帽", title_en: "NY Cap", desc: "戴上参考图里的黑色 NY 棒球帽", desc_en: "Black NY cap from the reference image", ref: "hat", text: "将参考图中的黑色 NY 棒球帽戴到主角头上，帽子正面朝前。", text_en: "Put the black NY baseball cap from the reference image on the subject's head, facing forward." },
+      { title: "红色围巾", title_en: "Red Scarf", desc: "围上参考图里的红色流苏围巾", desc_en: "Red tasseled scarf from the reference image", ref: "scarf", text: "将参考图中的红色流苏围巾围到主角的颈部。", text_en: "Wrap the red tasseled scarf from the reference image around the subject's neck." },
+      { title: "粉色T恤", title_en: "Pink Tee", desc: "换上参考图里的粉色短袖 T 恤", desc_en: "Pink short-sleeve tee from the reference image", ref: "pink_tee", text: "将主角的衣服换成参考图里的粉色短袖 T 恤。", text_en: "Replace the subject's clothing with the pink short-sleeve T-shirt from the reference image." },
+      { title: "橙色眼镜", title_en: "Orange Glasses", desc: "戴上参考图里的橙色镜片眼镜", desc_en: "Orange-tinted glasses from the reference image", ref: "orange_glasses", text: "给主角戴上参考图里的橙色镜片眼镜。", text_en: "Put the orange-tinted glasses from the reference image on the subject." },
+      { title: "奶龙", title_en: "Nailong", desc: "主角换成参考图里的黄色玩偶", desc_en: "Subject → yellow toy from the reference image", ref: "nailong", text: "将视频中的主角替换为参考图中的黄色玩偶。", text_en: "Replace the main subject in the video with the yellow toy from the reference image." },
+    ],
+  },
+  {
+    key: "style",
+    label: "风格演绎", label_en: "Style Transfer",
+    cases: [
+      { title: "3D动画", title_en: "3D Animation", desc: "渲染为3D动画电影风格", desc_en: "Render as 3D animated-film style", text: "将整个画面渲染为3D动画电影风格。应用平滑的三维建模质感、柔和的全局光照和景深，以及皮克斯风格的角色与场景渲染。", text_en: "Render the entire scene in a 3D animated-film style. Apply smooth 3D-modeled surfaces, soft global illumination and depth of field, and Pixar-style character and scene rendering." },
+      { title: "油画质感", title_en: "Oil Painting", desc: "转成梵高厚涂油画风格", desc_en: "Van Gogh impasto oil-painting style", text: "将整个画面转换为梵高的画的风格。应用厚重、富有表现力的笔触，鲜艳且强烈的色彩，天空中和风景中动态旋转的纹理，以及梵高画作中特有的粗放油彩（厚涂法）效果。", text_en: "Convert the entire scene into the style of a Van Gogh painting. Apply thick, expressive brushstrokes, vivid and intense colors, dynamic swirling textures in the sky and landscape, and the coarse impasto oil effect characteristic of Van Gogh's work." },
+      { title: "像素画", title_en: "Pixel Art", desc: "渲染为16色像素画风格", desc_en: "Render as 16-color pixel art", text: "将整个画面渲染为16色像素画风格。", text_en: "Render the entire scene in a 16-color pixel-art style." },
+      { title: "日漫赛璐璐", title_en: "Anime Cel", desc: "转成日式动漫赛璐璐风格", desc_en: "Japanese anime cel-shaded style", text: "将整个画面转换为日式动漫赛璐璐风格：干净的黑色描边、大面积平涂的纯色色块、明确的明暗二分硬边阴影和简洁的高光。", text_en: "Convert the entire scene into a Japanese anime cel-shaded style: clean black outlines, large flat areas of solid color, clear hard-edged two-tone shading, and simple highlights." },
+    ],
+  },
+  {
+    key: "face_edit",
+    label: "外貌改造", label_en: "Look Edit",
+    cases: [
+      { title: "戴上墨镜", title_en: "Sunglasses", desc: "戴一副粉色飞行员墨镜", desc_en: "Add pink aviator sunglasses", text: "给主角添加一副粉色飞行员墨镜架在鼻梁上。", text_en: "Add a pair of pink aviator sunglasses resting on the bridge of the subject's nose." },
+      { title: "戴口罩", title_en: "Face Mask", desc: "脸上戴一个医用口罩", desc_en: "Add a medical face mask", text: "给主角的脸上戴一个医用口罩。", text_en: "Put a medical face mask on the subject's face." },
+      { title: "加耳环", title_en: "Earrings", desc: "双耳加一对金色圆环耳环", desc_en: "Add a pair of gold hoop earrings", text: "给主角的双耳耳垂添加一对抛光金色圆环耳环。", text_en: "Add a pair of polished gold hoop earrings to the subject's earlobes." },
+      { title: "加络腮胡", title_en: "Beard", desc: "下颌脸颊加浓密络腮胡", desc_en: "Add a thick full beard", text: "给主角的下颌和脸颊添加浓密的深黄色络腮胡须，自然卷曲，覆盖下巴和两颊。", text_en: "Add a thick dark-yellow full beard to the subject's jaw and cheeks, naturally curly, covering the chin and both cheeks." },
+    ],
+  },
+  {
+    key: "material",
+    label: "质感变身", label_en: "Material Morph",
+    cases: [
+      { title: "大理石雕塑", title_en: "Marble Statue", desc: "变成白色大理石雕塑", desc_en: "Turn into a white marble statue", text: "将主角整体转化为白色大理石雕塑：可见石材纹理和细微灰色脉络、表面呈抛光光泽、光线在曲面形成柔和高光，眼睛和头发同为石质，保持原有动作但带有雕塑般的质感。", text_en: "Transform the subject entirely into a white marble statue: visible stone texture and fine gray veining, a polished glossy surface, soft highlights on the curved surfaces, eyes and hair also made of stone, keeping the original motion but with a sculptural quality." },
+      { title: "乐高小人", title_en: "LEGO Figure", desc: "变成乐高积木小人", desc_en: "Turn into a LEGO minifigure", text: "将主角转化为乐高积木小人风格：黄色圆柱形头部、表面为塑料亚光质感，五官简化为印刷贴纸式的黑色圆点眼睛和弧线微笑。", text_en: "Transform the subject into a LEGO minifigure style: a yellow cylindrical head with a matte plastic surface, facial features simplified into printed-sticker-style black dot eyes and a curved smile." },
+      { title: "赛博机械体", title_en: "Cyborg", desc: "变成赛博机械体", desc_en: "Turn into a cyborg", text: "将主角转化为赛博机械体：面部露出银色金属骨架和精密齿轮、眼睛发出冷蓝光、皮肤接缝处可见荧光线路板纹路，关节处有可见的液压结构。", text_en: "Transform the subject into a cyborg: a silver metal skeleton and precision gears exposed on the face, eyes glowing cold blue, glowing circuit-board traces along the skin seams, and visible hydraulic structures at the joints." },
+      { title: "黏土动画", title_en: "Claymation", desc: "变成定格黏土动画角色", desc_en: "Turn into a stop-motion clay character", text: "将主角转化为定格黏土动画角色：表面可见手工捏制的指纹压痕和不规则质感、色彩饱和但略带哑光、比例微微卡通化（头部略大）。", text_en: "Transform the subject into a stop-motion claymation character: visible hand-molded fingerprint dents and irregular texture, saturated but slightly matte colors, and mildly cartoonish proportions (a slightly larger head)." },
+    ],
+  },
+  {
+    key: "bg_swap",
+    label: "背景切换", label_en: "Swap Background",
+    cases: [
+      { title: "热带海滩", title_en: "Tropical Beach", desc: "背景换成阳光热带海滩", desc_en: "Background → sunny tropical beach", text: "将背景场景替换为阳光明媚的热带海滩。", text_en: "Replace the background scene with a sunny tropical beach." },
+      { title: "荒凉沙漠", title_en: "Barren Desert", desc: "背景换成荒凉空旷沙漠", desc_en: "Background → barren empty desert", text: "将背景场景替换为荒凉空旷的沙漠。", text_en: "Replace the background scene with a barren, empty desert." },
+      { title: "新中式客厅", title_en: "Modern Chinese Living Room", desc: "背景换成新中式客厅", desc_en: "Background → modern Chinese living room", text: "将背景替换为新中式风格的客厅。", text_en: "Replace the background with a modern Chinese-style living room." },
+    ],
+  },
+  {
+    key: "swap_hero",
+    label: "主角变身", label_en: "Transform Subject",
+    cases: [
+      { title: "梅西", title_en: "Messi", desc: "主角变成球星梅西", desc_en: "Turn the subject into Lionel Messi", text: "将主角变成足球明星梅西（Lionel Messi）的样貌。", text_en: "Change the subject's appearance into that of the football star Lionel Messi." },
+      { title: "詹姆斯", title_en: "LeBron", desc: "主角变成球星詹姆斯", desc_en: "Turn the subject into LeBron James", text: "将主角变成篮球明星勒布朗·詹姆斯（LeBron James）的样貌。", text_en: "Change the subject's appearance into that of the basketball star LeBron James." },
+      { title: "特朗普", title_en: "Trump", desc: "主角变成特朗普", desc_en: "Turn the subject into Donald Trump", text: "将主角变成美国总统特朗普（Donald Trump）的样貌。", text_en: "Change the subject's appearance into that of U.S. President Donald Trump." },
+      { title: "奥巴马", title_en: "Obama", desc: "主角变成奥巴马", desc_en: "Turn the subject into Barack Obama", text: "将主角变成美国前总统奥巴马（Barack Obama）的样貌。", text_en: "Change the subject's appearance into that of former U.S. President Barack Obama." },
+      { title: "奥特曼", title_en: "Ultraman", desc: "主角变成奥特曼", desc_en: "Turn the subject into Ultraman", text: "将主角的脸和身体变成奥特曼。", text_en: "Change the subject's face and body into Ultraman." },
+      { title: "拉布拉多", title_en: "Labrador", desc: "主角变成拉布拉多", desc_en: "Turn the subject into a Labrador", text: "将主角的脸和身体变成一只拉布拉多犬。", text_en: "Change the subject's face and body into a Labrador dog." },
+    ],
+  },
+];
+
+const promptBox = document.getElementById("prompt");
+function autosizePrompt() {
+  promptBox.style.height = "auto";
+  promptBox.style.height = promptBox.scrollHeight + "px";
+}
+promptBox.addEventListener("input", autosizePrompt);
+
+function applyCaseSelection(item, group) {
+  promptBox.value = sceneField(item, "text");
+  autosizePrompt();
+  if (item.ref && REF_IMAGES && REF_IMAGES[item.ref]) {
+    const el = document.getElementById("refImage");
+    if (el) el.value = "";
+    injectedRefImageDataUrl = REF_IMAGES[item.ref];
+    refImagePreviewDataUrl = injectedRefImageDataUrl;
+    applyRefImagePreview();
+  } else if (!refImageSelected()) {
+    injectedRefImageDataUrl = null;
+    refImagePreviewDataUrl = null;
+  }
+  updateSourceFrameVisibility();
+  syncRefThumb();
+  closeCardsPop();
+  updateMetrics();
+  suppressPeThisSend = false;
+  send();
+}
+
+function syncRefThumb() {
+  if (!refSlot) return;
+  const url = refImagePreviewDataUrl || injectedRefImageDataUrl || null;
+  if (url) {
+    if (refThumbImg) refThumbImg.src = url;
+    refSlot.classList.add("has-thumb");
+    refSlot.style.display = "";
+  } else {
+    if (refThumbImg) refThumbImg.removeAttribute("src");
+    refSlot.classList.remove("has-thumb");
+    refSlot.style.display = "";
+  }
+  syncPeAvailability();
+}
+
+function refImageActive() {
+  return refImageSelected() || !!injectedRefImageDataUrl || !!refImagePreviewDataUrl;
+}
+
+function syncPeAvailability() {
+  const usePeEl = document.getElementById("usePe");
+  const peAvailable = !(SERVER_DEFAULTS && SERVER_DEFAULTS.pe_available === false);
+  const locked = refImageActive() || !peAvailable;
+  if (usePeEl) {
+    usePeEl.disabled = locked;
+    if (!peAvailable) usePeEl.checked = false;
+  }
+  if (peToggleEl) {
+    peToggleEl.setAttribute("aria-disabled", locked ? "true" : "false");
+  }
+}
+
+let activeChipKey = null;
+function closeCardsPop() {
+  if (cardsPop) { cardsPop.classList.remove("open"); cardsPop.innerHTML = ""; }
+  activeChipKey = null;
+  if (sceneChipsEl) {
+    for (const c of sceneChipsEl.querySelectorAll(".chip")) c.classList.remove("active");
+  }
+}
+function openCategory(group, chipEl) {
+  if (!cardsPop) return;
+  if (activeChipKey === group.key) { closeCardsPop(); return; }
+  activeChipKey = group.key;
+  if (sceneChipsEl) {
+    for (const c of sceneChipsEl.querySelectorAll(".chip")) c.classList.toggle("active", c === chipEl);
+  }
+  cardsPop.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "pop-grid";
+  for (const item of group.cases) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "prompt-case";
+    if (item.ref) btn.classList.add("has-ref");
+    const tEl = document.createElement("span");
+    tEl.className = "pc-title";
+    const _ttl = sceneField(item, "title"); tEl.textContent = item.ref ? ("📎 " + _ttl) : _ttl;
+    const d = document.createElement("span");
+    d.className = "pc-desc";
+    d.textContent = sceneField(item, "desc");
+    btn.appendChild(tEl);
+    btn.appendChild(d);
+    btn.addEventListener("click", () => applyCaseSelection(item, group));
+    grid.appendChild(btn);
+  }
+  cardsPop.appendChild(grid);
+  cardsPop.classList.add("open");
+}
+
+function renderPromptCases() {
+  if (!sceneChipsEl) return;
+  sceneChipsEl.innerHTML = "";
+  for (const group of PROMPT_GROUPS) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    if (group.cases.some((c) => c.ref)) chip.classList.add("chip-ref");
+    chip.textContent = sceneField(group, "label");
+    chip.addEventListener("click", () => openCategory(group, chip));
+    sceneChipsEl.appendChild(chip);
+  }
+}
+renderPromptCases();
+fetch("/ref-images").then((r) => (r.ok ? r.json() : {})).then((d) => { REF_IMAGES = d || {}; }).catch(() => {});
+syncPeAvailability();
+
+function handleVideoFileChange(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  stopActiveRun();
+  camera.onended = null;
+  camera.onloadedmetadata = null;
+  startingRun = false;
+  sessionGranted = false;
+  setSendBusy(false, "");
+  clearResultVideo();
+  showCameraOverlay(false);
+  blankOutputPane();
+  showOutputIdle(true);
+  if (stream) {
+    for (const track of stream.getTracks()) { try { track.stop(); } catch (err) {} }
+    stream = null;
+  }
+  if (videoFileUrl) { try { URL.revokeObjectURL(videoFileUrl); } catch (err) {} }
+  videoFileUrl = URL.createObjectURL(file);
+  usingVideoFile = true;
+  camera.srcObject = null;
+  camera.classList.add("no-mirror");
+  camera.src = videoFileUrl;
+  camera.loop = false;
+  camera.muted = true;
+  camera.playsInline = true;
+  camera.onended = handleVideoEnded;
+  camera.onloadedmetadata = () => {
+    const vw = camera.videoWidth || 0;
+    const vh = camera.videoHeight || 0;
+    if (vw > 0 && vh > 0) {
+      const want = vh > vw ? "portrait" : "landscape";
+      if (currentOrientation() !== want) {
+        applyOrientation(want);
+      }
+    }
+  };
+  setSourceSeg("mp4");
+  if (cropMaskEl) cropMaskEl.classList.remove("show");
+  camera.pause();
+  try { camera.currentTime = 0; } catch (err) {}
+  updateMetrics();
+}
+
+function handleVideoEnded() {
+  if (!usingVideoFile) return;
+  if (resultSyncActive) return;
+  if (finalizeIsForResult) return;
+  stopVideoPull();
+  if (timer) { clearInterval(timer); timer = null; }
+  if (netPingTimer) { clearInterval(netPingTimer); netPingTimer = null; }
+  updateMetrics();
+  if (ws && ws.readyState === WebSocket.OPEN && sessionGranted) {
+    finalizeIsForResult = true;
+    lastRecId = null;
+    updateUploadProgress();
+    if (finalizeWatchdog) clearTimeout(finalizeWatchdog);
+    finalizeWatchdog = setTimeout(() => {
+      finalizeWatchdog = null;
+      if (!finalizeIsForResult) return;
+      finalizeIsForResult = false;
+      stopResultSync();
+      if (outputWaitOverlay) outputWaitOverlay.style.display = "none";
+      showOutputIdle(true);
+      setSendBusy(false, "");
+    }, 30000);
+    try { ws.send(JSON.stringify({ type: "finalize_recording" })); }
+    catch (err) {}
+  }
+}
+
+function switchToCamera() {
+  stopActiveRun();
+  startingRun = false;
+  sessionGranted = false;
+  setSendBusy(false, "");
+  clearResultVideo();
+  blankOutputPane();
+  showOutputIdle(true);
+  usingVideoFile = false;
+  camera.classList.remove("no-mirror");
+  if (videoFileUrl) { try { URL.revokeObjectURL(videoFileUrl); } catch (err) {} }
+  videoFileUrl = null;
+  camera.onended = null;
+  camera.onloadedmetadata = null;
+  camera.loop = false;
+  camera.removeAttribute("src");
+  camera.load();
+  document.getElementById("videoFile").value = "";
+  setSourceSeg("camera");
+  applyOrientation(defaultCameraOrientation());
+  camera.srcObject = null;
+  ensureCamera().then(() => {
+    showCameraOverlay(false);
+  }).catch((err) => {
+    showCameraOverlay(true);
+  });
+}
+
+document.getElementById("refImage").addEventListener("change", handleRefImageChange);
+document.getElementById("videoFile").addEventListener("change", handleVideoFileChange);
+function setSourceSeg(src) {
+  const segCam = document.getElementById("segCamera");
+  const segM = document.getElementById("segMp4");
+  if (segCam) segCam.classList.toggle("on", src === "camera");
+  if (segM) segM.classList.toggle("on", src === "mp4");
+}
+{
+  const segCam = document.getElementById("segCamera");
+  const segM = document.getElementById("segMp4");
+  if (segCam) segCam.addEventListener("click", () => { if (!usingVideoFile) return; switchToCamera(); });
+  if (segM) segM.addEventListener("click", () => { document.getElementById("videoFile").click(); });
+}
+const downloadBubble = document.getElementById("downloadBubble");
+let lastRecId = null;
+function showDownloadBubble(show) {
+  if (!downloadBubble) return;
+  if (show && !(SERVER_DEFAULTS && SERVER_DEFAULTS.record_enabled)) return;
+  if (show) { downloadBubble.style.display = ""; requestAnimationFrame(() => downloadBubble.classList.add("show")); }
+  else { downloadBubble.classList.remove("show"); downloadBubble.style.display = "none"; }
+}
+function updateUploadProgress() {
+  if (!usingVideoFile) return;
+  if (outputIdleOverlay) outputIdleOverlay.style.display = "none";
+  if (outputWaitOverlay) outputWaitOverlay.style.display = "";
+  if (outputWaitIco) outputWaitIco.textContent = "✨";
+  let label = t("edit_processing");
+  if (sentFrames > 0) {
+    const pct = Math.max(0, Math.min(100, Math.round(backendOutFrames / sentFrames * 100)));
+    label = label + " " + pct + "%";
+  }
+  if (outputWaitHint) outputWaitHint.textContent = label;
+}
+function startResultSync() {
+  if (!outputResult) return;
+  stopResultSync();
+  resultSyncActive = true;
+  camera.muted = true;
+  camera.loop = false;
+  outputResult.loop = false;
+  const mirror = () => { try { camera.currentTime = outputResult.currentTime; } catch (e) {} };
+  const onPlay = () => { camera.play().catch(() => {}); };
+  const onPause = () => { try { camera.pause(); } catch (e) {} };
+  const onRate = () => { camera.playbackRate = outputResult.playbackRate; };
+  const onTimeUpdate = () => {
+    if (Math.abs(camera.currentTime - outputResult.currentTime) > 0.15) mirror();
+  };
+  const onEnded = () => {
+    try { camera.currentTime = 0; } catch (e) {}
+    try { outputResult.currentTime = 0; } catch (e) {}
+    camera.play().catch(() => {});
+    outputResult.play().catch(() => {});
+  };
+  resultSyncHandlers = { onPlay, onPause, onRate, onTimeUpdate, onEnded, mirror };
+  outputResult.addEventListener("play", onPlay);
+  outputResult.addEventListener("pause", onPause);
+  outputResult.addEventListener("ratechange", onRate);
+  outputResult.addEventListener("seeking", mirror);
+  outputResult.addEventListener("seeked", mirror);
+  outputResult.addEventListener("timeupdate", onTimeUpdate);
+  outputResult.addEventListener("ended", onEnded);
+  try { camera.currentTime = 0; } catch (e) {}
+  try { outputResult.currentTime = 0; } catch (e) {}
+  camera.play().catch(() => {});
+  outputResult.play().catch(() => {});
+}
+function stopResultSync() {
+  resultSyncActive = false;
+  if (resultSyncHandlers && outputResult) {
+    const h = resultSyncHandlers;
+    outputResult.removeEventListener("play", h.onPlay);
+    outputResult.removeEventListener("pause", h.onPause);
+    outputResult.removeEventListener("ratechange", h.onRate);
+    outputResult.removeEventListener("seeking", h.mirror);
+    outputResult.removeEventListener("seeked", h.mirror);
+    outputResult.removeEventListener("timeupdate", h.onTimeUpdate);
+    outputResult.removeEventListener("ended", h.onEnded);
+  }
+  resultSyncHandlers = null;
+  try { if (usingVideoFile) camera.pause(); } catch (e) {}
+}
+function clearResultVideo() {
+  stopResultSync();
+  finalizeIsForResult = false;
+  lastRecId = null;
+  resultEpoch += 1;
+  if (typeof showDownloadBubble === "function") showDownloadBubble(false);
+  if (outputResult) {
+    try { outputResult.pause(); } catch (e) {}
+    outputResult.removeAttribute("src");
+    outputResult.load();
+    outputResult.style.display = "none";
+  }
+  if (resultBlobUrl) { try { URL.revokeObjectURL(resultBlobUrl); } catch (e) {} resultBlobUrl = null; }
+}
+function showResultVideo(url) {
+  if (!outputResult) return;
+  outputResult.src = url;
+  outputResult.style.display = "";
+  if (outputWaitOverlay) outputWaitOverlay.style.display = "none";
+  if (outputIdleOverlay) outputIdleOverlay.style.display = "none";
+  outputResult.play().catch(() => {});
+}
+function triggerBrowserDownload(url, filename) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "streamedit_output.mp4";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+function fetchAndSaveRecording() {
+  if (resultBlobUrl) triggerBrowserDownload(resultBlobUrl, "streamedit_output.mp4");
+}
+async function fetchAndShowResult() {
+  const myEpoch = resultEpoch;
+  try {
+    const resp = await fetch("/download_last?rec=" + encodeURIComponent(lastRecId), { cache: "no-store" });
+    if (myEpoch !== resultEpoch) return;
+    if (!resp.ok) {
+      let detail = "";
+      try { const j = await resp.json(); detail = j.error || ""; } catch (e) {}
+      setSendBusy(false, "");
+      return;
+    }
+    const blob = await resp.blob();
+    if (myEpoch !== resultEpoch) return;
+    if (resultBlobUrl) { try { URL.revokeObjectURL(resultBlobUrl); } catch (e) {} }
+    resultBlobUrl = URL.createObjectURL(blob);
+    showResultVideo(resultBlobUrl);
+    if (usingVideoFile) startResultSync();
+    showDownloadBubble(true);
+    showOutputToast(t("toast_done"), 4000);
+    setSendBusy(false, "");
+  } catch (err) {
+  }
+}
+function onRecordingFinalized(msg) {
+  if (finalizeWatchdog) { clearTimeout(finalizeWatchdog); finalizeWatchdog = null; }
+  lastRecId = msg.rec || null;
+  if (!lastRecId) {
+    finalizeIsForResult = false;
+    stopResultSync();
+    if (outputWaitOverlay) outputWaitOverlay.style.display = "none";
+    showOutputIdle(true);
+    setSendBusy(false, "");
+    return;
+  }
+  finalizeIsForResult = false;
+  if (outputWaitOverlay) outputWaitOverlay.style.display = "";
+  if (outputWaitIco) outputWaitIco.textContent = "✨";
+  if (outputWaitHint) outputWaitHint.textContent = t("toast_finalizing");
+  setSendBusy(true, t("toast_finalizing"));
+  fetchAndShowResult();
+}
+if (downloadBubble) {
+  downloadBubble.addEventListener("click", () => {
+    fetchAndSaveRecording();
+  });
+}
+if (startCameraBtn) {
+  startCameraBtn.addEventListener("click", () => {
+    startCameraBtn.disabled = true;
+    ensureCamera().then(() => {
+      showCameraOverlay(false);
+    }).catch((err) => {
+      startCameraBtn.disabled = false;
+    });
+  });
+}
+{
+  const refClear = document.getElementById("refClear");
+  if (refClear) refClear.addEventListener("click", (e) => {
+    e.preventDefault();
+    const el = document.getElementById("refImage");
+    if (el) el.value = "";
+    injectedRefImageDataUrl = null;
+    handleRefImageChange();
+  });
+}
+{
+  const lb = document.getElementById("refLightbox");
+  const lbImg = document.getElementById("refLightboxImg");
+  if (refThumbImg && lb && lbImg) {
+    refThumbImg.addEventListener("click", () => {
+      const src = refThumbImg.getAttribute("src");
+      if (!src) return;
+      lbImg.src = src;
+      lb.classList.add("show");
+    });
+    lb.addEventListener("click", () => lb.classList.remove("show"));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") lb.classList.remove("show");
+    });
+  }
+}
+document.addEventListener("click", (e) => {
+  if (!cardsPop || !cardsPop.classList.contains("open")) return;
+  if (cardsPop.contains(e.target)) return;
+  if (sceneChipsEl && sceneChipsEl.contains(e.target)) return;
+  closeCardsPop();
+});
+document.getElementById("smoothPlayback").addEventListener("change", () => {
+  if (smoothPlaybackEnabled()) ensureOutputPlaybackTimer(true);
+  else flushOutputQueueToLatest();
+  updateMetrics();
+});
+for (const id of ["targetQueueDelayMs", "maxQueueDelayMs"]) {
+  document.getElementById(id).addEventListener("input", () => {
+    if (smoothPlaybackEnabled()) trimOutputQueueForLatency();
+    updateMetrics();
+  });
+}
+document.getElementById("useMaxTemporalIds").addEventListener("change", () => {
+  updateMaxTemporalIdsVisibility();
+  updateMetrics();
+});
+for (const id of ["width", "height", "cameraFps", "fps", "quality", "steps", "usePe", "refImage", "smoothPlayback", "targetQueueDelayMs", "maxQueueDelayMs", "kvResetFrames", "useMaxTemporalIds", "maxTemporalIds", "freezeKvOnStatic", "staticDiffThresh", "profileTimings", "dbgGateEnabled"]) {
+  document.getElementById(id).addEventListener("input", updateMetrics);
+  document.getElementById(id).addEventListener("change", updateMetrics);
+}
+var upqTierEl = document.getElementById("upqTier");
+const qualityLegacyEl = document.getElementById("quality");
+function highlightUpqTier(which) {
+  for (const b of upqTierEl.querySelectorAll("button")) {
+    b.classList.toggle("on", b.getAttribute("data-upq") === String(which));
+    b.classList.remove("auto-active");
+  }
+  if (which === "auto") {
+    const cur = upAutoHigh ? "0.6" : "0.4";
+    for (const b of upqTierEl.querySelectorAll("button")) {
+      if (b.getAttribute("data-upq") === cur) b.classList.add("auto-active");
+    }
+  }
+}
+function syncUpQualityUi() {
+  highlightUpqTier(upAuto ? "auto" : qualityLegacyEl.value);
+}
+for (const b of upqTierEl.querySelectorAll("button")) {
+  b.addEventListener("click", () => {
+    const v = b.getAttribute("data-upq");
+    if (v === "auto") {
+      upAuto = true;
+      upAutoHigh = true;
+      upAutoClear = 0;
+    } else {
+      upAuto = false;
+      qualityLegacyEl.value = v;
+    }
+    highlightUpqTier(v);
+    resetUplinkEncoder();
+    updateMetrics();
+  });
+}
+const Q_TIERS = [20, 40, 60];
+const downQualityUi = document.getElementById("downQualityUi");
+const qtierEl = document.getElementById("qtier");
+let autoQTier = 2;
+let autoQLowStreak = 0;
+let autoQHoldTicks = 0;
+function sendOutputQuality(v) {
+  if (ws && ws.readyState === WebSocket.OPEN && sessionGranted) {
+    try { ws.send(JSON.stringify({ type: "set_output_quality", value: v })); } catch (err) {}
+  }
+}
+function setDownQuality(v, opts) {
+  const q = Math.max(1, Math.min(100, Math.floor(v)));
+  if (downQualityUi) downQualityUi.value = String(q);
+  if (opts && opts.live) sendOutputQuality(q);
+  updateMetrics();
+}
+function highlightQTier(which) {
+  if (!qtierEl) return;
+  for (const b of qtierEl.querySelectorAll("button")) {
+    b.classList.toggle("on", b.getAttribute("data-q") === String(which));
+    b.classList.remove("auto-active");
+  }
+  if (which === "auto") {
+    const cur = String(Q_TIERS[autoQTier]);
+    for (const b of qtierEl.querySelectorAll("button")) {
+      if (b.getAttribute("data-q") === cur) b.classList.add("auto-active");
+    }
+  }
+}
+if (qtierEl) {
+  for (const b of qtierEl.querySelectorAll("button")) {
+    b.addEventListener("click", () => {
+      const d = b.getAttribute("data-q");
+      if (d === "auto") {
+        autoQuality = true; autoQTier = 2; autoQLowStreak = 0; autoQHoldTicks = 0;
+        highlightQTier("auto");
+        setDownQuality(Q_TIERS[autoQTier], { live: true });
+      } else {
+        autoQuality = false;
+        highlightQTier(Number(d));
+        setDownQuality(Number(d), { live: true });
+      }
+    });
+  }
+}
+const fpsTierEl = document.getElementById("fpsTier");
+const fpsInputEl = document.getElementById("fps");
+if (fpsTierEl) {
+  for (const b of fpsTierEl.querySelectorAll("button")) {
+    b.addEventListener("click", () => {
+      const v = b.getAttribute("data-fps");
+      if (fpsInputEl) fpsInputEl.value = v;
+      for (const x of fpsTierEl.querySelectorAll("button")) x.classList.toggle("on", x === b);
+      if (timer) { clearInterval(timer); timer = setInterval(tick, Math.floor(1000 / sendTargetFps())); }
+      updateMetrics();
+    });
+  }
+}
+function autoQualityTick() {
+  if (!autoQuality) return;
+  if (!(ws && ws.readyState === WebSocket.OPEN && sessionGranted)) return;
+  const rtt = (downDelayMs !== null && downDelayMs !== undefined) ? downDelayMs : netRttLastMs;
+  if (rtt === null || rtt === undefined) return;
+  if (autoQHoldTicks > 0) autoQHoldTicks--;
+  let target = autoQTier;
+  if (rtt > 300) {
+    if (autoQHoldTicks === 0) target = Math.max(1, autoQTier - 1);
+    autoQLowStreak = 0;
+  } else if (rtt < 150) {
+    autoQLowStreak++;
+    if (autoQLowStreak >= 5 && autoQHoldTicks === 0) { target = Math.min(2, autoQTier + 1); autoQLowStreak = 0; }
+  } else {
+    autoQLowStreak = 0;
+  }
+  if (target !== autoQTier) {
+    autoQTier = target;
+    autoQHoldTicks = 2;
+    setDownQuality(Q_TIERS[autoQTier], { live: true });
+    highlightQTier("auto");
+  }
+}
+function faceGateDebugEnabled() {
+  const el = document.getElementById("dbgGateEnabled");
+  return !el || el.checked;
+}
+function applyServerDefaults() {
+  const d = SERVER_DEFAULTS || {};
+  const numMap = {
+    width: "width", height: "height", steps: "num_inference_steps",
+    fps: "fps",
+    kvResetFrames: "kv_reset_frames", staticDiffThresh: "static_diff_thresh",
+  };
+  for (const [id, key] of Object.entries(numMap)) {
+    const v = d[key];
+    if (v !== null && v !== undefined) document.getElementById(id).value = v;
+  }
+  if (d.fps !== null && d.fps !== undefined) {
+    const tier = document.getElementById("fpsTier");
+    if (tier) for (const b of tier.querySelectorAll("button")) {
+      b.classList.toggle("on", Number(b.getAttribute("data-fps")) === Number(d.fps));
+    }
+  }
+  const boolMap = {
+    freezeKvOnStatic: "freeze_kv_on_static",
+    usePe: "use_pe",
+    dbgGateEnabled: "online_gate",
+    profileTimings: "profile_timings",
+  };
+  for (const [id, key] of Object.entries(boolMap)) {
+    const v = d[key];
+    if (v !== null && v !== undefined) document.getElementById(id).checked = !!v;
+  }
+  const maxIds = d.max_temporal_ids;
+  if (maxIds !== null && maxIds !== undefined) {
+    document.getElementById("useMaxTemporalIds").checked = true;
+    document.getElementById("maxTemporalIds").value = maxIds;
+  }
+  if (d.output_quality !== undefined && d.output_quality !== "auto") {
+    autoQuality = false;
+    highlightQTier(Number(d.output_quality));
+    setDownQuality(Number(d.output_quality), { live: false });
+  } else {
+    highlightQTier("auto");
+    setDownQuality(Q_TIERS[autoQTier], { live: false });
+  }
+  syncUpQualityUi();
+}
+
+window.addEventListener("load", () => {
+  applyServerDefaults();
+  const langBtn = document.getElementById("langToggle");
+  if (langBtn) {
+    for (const b of langBtn.querySelectorAll("button")) {
+      b.addEventListener("click", () => setLang(b.getAttribute("data-lang")));
+    }
+  }
+  applyLang();
+  applyOrientation(defaultCameraOrientation());
+  updateMaxTemporalIdsVisibility();
+  updateSourceFrameVisibility();
+  syncRefThumb();
+  showOutputIdle(true);
+  updateMetrics();
+  ensureCamera().then(() => {
+    showCameraOverlay(false);
+  }).catch((err) => {
+    showCameraOverlay(true);
+  });
+});
+</script>
+</body>
+</html>

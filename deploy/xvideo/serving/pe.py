@@ -1,0 +1,311 @@
+import base64
+import json
+import logging
+import os
+import re
+import time
+import urllib.request
+from io import BytesIO
+from typing import List, Optional
+
+from PIL import Image
+
+logger = logging.getLogger("streamedit.pe")
+
+DEFAULT_MODEL = os.environ.get("PE_MODEL", "")
+DEFAULT_BASE_URL = os.environ.get("OPENAI_BASE_URL", "")
+DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+MAX_RETRIES = 8
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+PE_IMAGE_MAX_SIDE = _env_int("PE_IMAGE_MAX_SIDE", 768)
+
+SYSTEM_PROMPT = """# SYSTEM PERSONA
+You are an elite AI Video-to-Video (V2V) Prompt Architect. Your objective is to translate raw user
+commands and source video frame contexts into highly optimized, robust English prompts for advanced
+generative V2V models."""
+
+V2V_TEMPLATE = """# INPUT DATA
+- Target Objective: "{user_prompt}"
+- Visual Reference: Provided source video frame.
+
+# OUTPUT CONTRACT
+- Output ONLY the final finalized English prompt string, as ONE natural, cohesive paragraph — no
+  bullet points or lists, zero conversational filler, no greetings, no meta-commentary, no labels
+  (never echo section names from this instruction).
+- Grounding: Never hallucinate or describe entities, body parts, or environments that are
+  out-of-frame or occluded in the provided source video frame.
+- Typography/Text Rendering: This rule applies ONLY to text the user explicitly names in the Target
+  Objective. If the user requests specific text, logos, or characters to be written, printed, or
+  displayed on an object, you MUST keep the EXACT original string enclosed in double quotes, and
+  DO NOT translate or transliterate it (strictly preserve the original language and characters from
+  the user's prompt). Conversely, DO NOT read, transcribe, OCR, or mention any text, label, brand,
+  logo, or watermark that merely appears in the source frames but is not named in the Target
+  Objective — treat such incidental background text as ordinary unchanged pixels, never as a
+  preservation anchor.
+
+# EDIT PLAN
+1. Scope: Never introduce edit operations the Target Objective did not request — no
+   background/scene replacement, no art-style or medium change (anime / painting / cartoon look and
+   similar), no relighting or color grading beyond what a requested edit needs for integration, no
+   camera motion, speed changes, depth-of-field effects, or extra elements on your own initiative.
+   Unless the Target Objective names an art style, the edited video stays photorealistic
+   live-action — never add a painting / ink / anime / cartoon style because the scene's culture or
+   era suggests one. Use only the recipes that match the requested task; elaborate the requested
+   edits, never add new ones.
+2. Priority: Describe the edits in the Target Objective's order of importance — the primary subject
+   edit comes FIRST and carries the most detail (for a well-known character or person, spell out
+   their canonical visual features); secondary edits such as a background swap get one concise
+   sentence each — still naming 2-3 concrete scene elements (e.g. "snow-covered pines, distant
+   mountains"), a bare category like "a snowy landscape" is not enough — and must never dominate
+   the paragraph.
+3. Completeness: Every distinct requested edit gets its own explicit sentence with concrete visual
+   detail — never merge, dilute, or drop a requested item (aging, earrings, an accessory, a named
+   garment each count as one edit).
+4. Grounding & Physics: Eradicate all ambiguous or generic descriptors — specify concrete,
+   well-known entities that match the original art style, never leave placeholder terms. For each
+   edit, describe the physical interactions and temporal consistency expected in the video
+   (tracking, deformation, shadows) to prevent artifacts.
+
+# EDIT RECIPES
+Evaluate the Target Objective to determine the task type. Use the matching recipes as the
+FOUNDATION of your prompt, and seamlessly expand them into a highly detailed, cohesive paragraph
+(DO NOT use bullet points or lists):
+
+[Entity Manipulation & Modification]
+- Add: "Add [specific element] at [precise spatial location/action]."
+- Replace: "Replace [original element] with [specific new element]."
+- Character/Creature Replace: When the subject becomes a character, celebrity, or animal — including
+  when a named person's face replaces the subject's face — FIRST describe its head and face anatomy
+  (fur, snout, facial structure, eyes, skin) so the face visibly transforms — costume or armor alone
+  is NOT a transformation — THEN its canonical outfit/armor/props in the same sentence or the next
+  one; both halves are mandatory. The replacement's canonical look takes over the whole head:
+  original glasses and facial accessories do NOT carry over onto the new face — when the source
+  frame shows any, write this sentence verbatim: "The subject's original glasses and facial
+  accessories are removed." (see the Glasses rule below for when this is allowed).
+- Remove: "Erase [target object] from the scene, temporally inpainting the occluded areas to match
+  surrounding spatial textures and lighting."
+- Attribute Edit: "Change the [attribute] of [target entity] to [new specific state]."
+
+[Global Stylization & Environment]
+- Background Replacement: "Replace the original background with [highly detailed description of the
+  new environment], ensuring the foreground elements are seamlessly integrated with matching global
+  illumination, reflections, and realistic cast shadows."
+  Whenever this recipe is used, append this clause verbatim right after it: "the area directly
+  behind the subject's head and shoulders shows only the new environment — the original chair and
+  its headrest are gone." In an output that does not replace the background, that clause and any
+  mention of removing the chair, headrest, or other scene objects are FORBIDDEN.
+- Style Transfer: "Render the scene in the style of [Style Name], featuring [2-3 concrete visual
+  characteristics]."
+- Whole-frame Style Coverage: When the objective converts the entire video to an art style, the
+  subject's face, skin, hair, and clothing are rendered in that style too — write it explicitly
+  ("the person, including their face, is drawn/painted in the same style"). "Keep the
+  face/background unchanged" inside a style request means identity, layout, and content stay
+  recognizable WITHIN the style; NEVER write that the face or background keeps its photorealistic
+  look, and never emit phrases like "face remains unchanged", "maintaining facial features",
+  "natural skin tone", or "body language remains unchanged" anywhere in a whole-frame style
+  conversion (not even in sentences about other edits) — the ONLY allowed preservation wording is
+  "identity, pose, and layout stay recognizable within the style". When a mood-style word (e.g.
+  cyberpunk) is paired with "keep everything unchanged", realize the style as bold, clearly visible
+  lighting and color grading (e.g. neon rim light, saturated color cast) on the unchanged scene —
+  never "subtle".
+- Boundary: A request that redraws ONLY the background is a Background Replacement (its anchor case
+  applies); a request that converts the ENTIRE frame to a style keeps the scene's content —
+  background objects stay, restyled in place — and follows Whole-frame Style Coverage.
+- Weather/Environment: "Add [weather/season specifics] seamlessly affecting the global scene
+  physics."
+- Lighting & Color Grading: "Apply cinematic relighting and color grading: [detailed description of
+  color temperature, volumetric light sources, and ambient hues]."
+
+[Cinematography — only when explicitly requested]
+- Camera Motion / Depth of Field / Motion Speed: "Execute camera motion: [Pan/Tilt/Zoom/Tracking
+  direction]." / "Apply sharp focus to [target subject], with optical bokeh on [elements]." /
+  "Apply [temporal speed effect] to [target action/scene]."
+
+[Utility & Hybrid Tasks]
+- Text & Overlay Removal: "Remove all [text overlays/watermarks/subtitles], seamlessly
+  reconstructing the occluded background textures to generate a flawless clean plate."
+- Hybrid/Complex: Blend multiple recipes naturally into ONE cohesive paragraph.
+
+# VISUAL ANCHORS (PRESERVATIONS)
+Anchor ONLY what the Target Objective leaves untouched — an anchor must never contradict the
+requested edit, and preservation statements must never conflict with the Target Objective. Decide
+by case:
+- Background replaced: do NOT mention or preserve ANY object from the original background (walls,
+  ceiling, furniture, decor, wall-mounted items — the chair or seat the subject sits on counts as
+  background furniture too, never anchor it); the new environment must fully replace them, and the
+  only valid anchors are foreground subject elements that survive the edit.
+- Background kept: the ENTIRE original background is a mandatory anchor — state that it remains
+  unchanged, and NEVER invent or substitute a new environment.
+- Subject replaced or transformed: do not anchor the subject's original clothing or body — anchor
+  only pose, motion, and what the objective explicitly keeps. When the subject turns into a
+  different material or character, express likeness as part of the transformation ("an ice
+  sculpture OF the person, reproducing their pose and features in ice"), NEVER as a preservation
+  statement like "their hair and facial features remain unchanged".
+- Glasses: The sentence "The subject's original glasses and facial accessories are removed." may
+  appear ONLY when the subject's face or body is replaced by another person, character, or
+  creature. Any edit that merely modifies the subject (aging, beard, mask, clothing, hairstyle,
+  style, background) keeps their glasses — do not mention the glasses at all unless the Target
+  Objective names them.
+"""
+
+
+def _downscale(image: Image.Image, max_side: int = PE_IMAGE_MAX_SIDE) -> Image.Image:
+    if max_side and max_side > 0:
+        w, h = image.size
+        longest = max(w, h)
+        if longest > max_side:
+            scale = max_side / longest
+            image = image.resize((max(1, round(w * scale)), max(1, round(h * scale))))
+    return image
+
+
+def _pil_to_b64(image: Image.Image) -> str:
+    buf = BytesIO()
+    _downscale(image.convert("RGB")).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _img_to_b64(item) -> Optional[str]:
+    if item is None:
+        return None
+    if isinstance(item, tuple):
+        item = item[0]
+    if isinstance(item, Image.Image):
+        return _pil_to_b64(item)
+    if isinstance(item, str) and os.path.exists(item):
+        return _pil_to_b64(Image.open(item))
+    if isinstance(item, str):
+        return item
+    return None
+
+
+def _video_frames_to_b64(video) -> List[str]:
+    if not video:
+        return []
+    items = video if isinstance(video, list) else [video]
+    out = []
+    for item in items:
+        b64 = _img_to_b64(item)
+        if b64:
+            out.append(b64)
+    return out
+
+
+def _message_content_to_text(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return str(content.get("text", "") or "")
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get("text", "") or ""))
+        return "".join(parts)
+    return str(content)
+
+
+def _sanitize_enhanced(text: str, fallback: str) -> str:
+    if not text:
+        return fallback
+    cleaned = text
+    cleaned = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", cleaned)
+    cleaned = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cleaned)
+    cleaned = re.sub(r"https?://\S+", "", cleaned)
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    if len(cleaned) < 10:
+        logger.warning("PE output empty/too short after sanitizing; using raw prompt")
+        return fallback
+    if cleaned != text.strip():
+        logger.warning("PE output contained URL/link noise; sanitized it")
+    return cleaned
+
+
+def _build_messages(system_prompt: str, user_text: str, images_b64: List[str]):
+    content = [{"type": "text", "text": user_text}]
+    for i, b64 in enumerate(images_b64):
+        content.append({"type": "text", "text": f"\n[Image {i}]:"})
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": content},
+    ]
+
+
+class PromptEnhancer:
+
+    def __init__(
+        self,
+        api_key: str = None,
+        base_url: str = None,
+        model: str = None,
+        max_retries: int = MAX_RETRIES,
+    ):
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY") or DEFAULT_API_KEY
+        self.base_url = base_url or os.environ.get("OPENAI_BASE_URL") or DEFAULT_BASE_URL
+        self.model = model or os.environ.get("PE_MODEL") or DEFAULT_MODEL
+        self.anthropic = "/anthropic" in self.base_url
+        if not self.anthropic:
+            from openai import OpenAI
+
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        self.max_retries = max_retries
+
+    def _anthropic_complete(self, system_prompt, user_text, images_b64) -> str:
+        content = [{"type": "text", "text": user_text}]
+        for i, b64 in enumerate(images_b64):
+            content.append({"type": "text", "text": f"\n[Image {i}]:"})
+            content.append({"type": "image", "source": {
+                "type": "base64", "media_type": "image/png", "data": b64}})
+        body = json.dumps({
+            "model": self.model, "max_tokens": 4096, "system": system_prompt,
+            "messages": [{"role": "user", "content": content}],
+        }).encode()
+        req = urllib.request.Request(
+            f"{self.base_url.rstrip('/')}/v1/messages", data=body,
+            headers={"Authorization": f"Bearer {self.api_key}",
+                     "anthropic-version": "2023-06-01",
+                     "Content-Type": "application/json"})
+        resp = json.load(urllib.request.urlopen(req, timeout=90))
+        return "".join(b.get("text", "") for b in resp.get("content", [])
+                       if b.get("type") == "text")
+
+    def _chat(self, system_prompt, user_text, images_b64, raw_fallback="") -> Optional[str]:
+        messages = None if self.anthropic else _build_messages(system_prompt, user_text, images_b64)
+        last_err = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                if self.anthropic:
+                    text = self._anthropic_complete(system_prompt, user_text, images_b64)
+                else:
+                    resp = self.client.chat.completions.create(
+                        model=self.model, messages=messages, max_completion_tokens=8192
+                    )
+                    text = _message_content_to_text(resp.choices[0].message.content)
+                return _sanitize_enhanced(text.strip(), raw_fallback or text.strip())
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                logger.warning("PE attempt %d/%d failed: %s", attempt, self.max_retries, e)
+                time.sleep(min(attempt, 5))
+        logger.error("PE failed after %d attempts: %s", self.max_retries, last_err)
+        return None
+
+    def __call__(self, task_type, user_prompt, video=None) -> Optional[str]:
+        if not user_prompt or not user_prompt.strip():
+            return user_prompt
+        video_frames = _video_frames_to_b64(video)
+        text = V2V_TEMPLATE.format(user_prompt=user_prompt)
+        return self._chat(SYSTEM_PROMPT, text, video_frames, raw_fallback=user_prompt) or user_prompt
